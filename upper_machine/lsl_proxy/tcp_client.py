@@ -4,15 +4,13 @@ Handles connection lifecycle, frame receiving, and command sending.
 """
 
 import socket
-import struct
 import threading
-import time
 from typing import Optional, Callable
 
 from upper_machine.common.protocol import (
     FrameParser, ParsedFrame, SensorData,
     build_command, parse_sensor_data,
-    TYPE_SENSOR, TYPE_ACK, TYPE_COMMAND,
+    TYPE_SENSOR, TYPE_ACK,
     CMD_START_ACQ, CMD_STOP_ACQ,
 )
 
@@ -26,6 +24,7 @@ class TCPClient:
         self._sock: Optional[socket.socket] = None
         self._parser = FrameParser()
         self._recv_thread: Optional[threading.Thread] = None
+        self._send_lock = threading.Lock()
         self._running = False
         self._on_sensor: Optional[Callable[[SensorData], None]] = None
         self._on_frame: Optional[Callable[[ParsedFrame], None]] = None
@@ -34,9 +33,11 @@ class TCPClient:
 
     def connect(self, timeout: float = 10.0) -> bool:
         """Open TCP connection. Returns True on success."""
+        self.disconnect()
         try:
             self._sock = socket.create_connection((self._host, self._port), timeout=timeout)
             self._sock.settimeout(0.5)
+            self._parser = FrameParser()
             self._running = True
             self._recv_thread = threading.Thread(target=self._recv_loop, daemon=True)
             self._recv_thread.start()
@@ -48,7 +49,8 @@ class TCPClient:
     def disconnect(self):
         """Close connection and stop receive thread."""
         self._running = False
-        if self._recv_thread and self._recv_thread.is_alive():
+        if (self._recv_thread and self._recv_thread.is_alive() and
+                self._recv_thread is not threading.current_thread()):
             self._recv_thread.join(timeout=1.0)
         if self._sock:
             try:
@@ -56,6 +58,7 @@ class TCPClient:
             except OSError:
                 pass
             self._sock = None
+        self._recv_thread = None
 
     @property
     def connected(self) -> bool:
@@ -65,12 +68,16 @@ class TCPClient:
 
     def send_raw(self, data: bytes) -> bool:
         """Send raw bytes. Returns True on success."""
-        if not self._sock:
-            return False
         try:
-            self._sock.sendall(data)
+            with self._send_lock:
+                sock = self._sock
+                if not sock:
+                    return False
+                sock.sendall(data)
             return True
-        except OSError:
+        except OSError as e:
+            print(f"[TCP] send error: {e}")
+            self.disconnect()
             return False
 
     def send_command(self, cmd_id: int, data: bytes = b'') -> bool:
@@ -99,13 +106,16 @@ class TCPClient:
 
     def _recv_loop(self):
         buf = bytearray(4096)
-        last_ack_time = 0.0
-        while self._running and self._sock:
+        while self._running:
             try:
-                n = self._sock.recv_into(buf)
+                sock = self._sock
+                if not sock:
+                    break
+                n = sock.recv_into(buf)
                 if n == 0:
                     print("[TCP] server closed connection")
                     self._running = False
+                    self._close_socket()
                     break
                 if n < 0:
                     continue
@@ -136,4 +146,13 @@ class TCPClient:
                 if self._running:
                     print(f"[TCP] recv error: {e}")
                 self._running = False
+                self._close_socket()
                 break
+
+    def _close_socket(self):
+        sock, self._sock = self._sock, None
+        if sock:
+            try:
+                sock.close()
+            except OSError:
+                pass
