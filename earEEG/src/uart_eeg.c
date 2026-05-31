@@ -2,7 +2,6 @@
 #include "earEEG_config.h"
 #include "esp_log.h"
 #include "driver/uart.h"
-#include "esp_rom_gpio.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
@@ -135,12 +134,13 @@ bool uart_eeg_init(void)
         return false;
     }
 
-    // Route UART1 TX/RX to GPIO43/44 via GPIO matrix.
-    // Avoid uart_set_pin() — it calls gpio_set_direction which hangs
-    // when console UART0 already uses these pins.
-    // ESP32-S3 GPIO matrix signal IDs: U1TXD=8, U1RXD=9
-    esp_rom_gpio_connect_out_signal(PIN_UART_TX, 8, false, false);
-    esp_rom_gpio_connect_in_signal(PIN_UART_RX, 9, false);
+    // GPIO43/44 are available after moving the console to USB Serial/JTAG.
+    ret = uart_set_pin(OPENBCI_UART_NUM, PIN_UART_TX, PIN_UART_RX,
+                       UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "uart_set_pin failed: %d", ret);
+        return false;
+    }
 
     uart_set_rx_timeout(OPENBCI_UART_NUM, 3);
 
