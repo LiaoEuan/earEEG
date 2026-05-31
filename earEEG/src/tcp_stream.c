@@ -33,6 +33,7 @@ static int           s_listen_fd = -1;
 static TaskHandle_t  s_recv_task  = NULL;
 static volatile bool s_running    = false;
 static SemaphoreHandle_t s_send_mutex = NULL;
+static volatile bool s_reset_parser = false;
 
 static void send_ack(uint8_t cmd_id, uint8_t status)
 {
@@ -140,6 +141,14 @@ static void process_recv_bytes(const uint8_t *data, size_t len)
     static uint8_t        s_crc_buf[2];
     static size_t         s_crc_pos = 0;
 
+    if (s_reset_parser) {
+        s = FS_SYNC0;
+        s_payload_pos = 0;
+        s_header_pos = 0;
+        s_crc_pos = 0;
+        s_reset_parser = false;
+    }
+
     for (size_t i = 0; i < len; i++) {
         uint8_t b = data[i];
 
@@ -154,7 +163,7 @@ static void process_recv_bytes(const uint8_t *data, size_t len)
                 s_hdr.sync1 = PROTO_SYNC_1;
                 s_header_pos = 2; // sync bytes already consumed
             } else {
-                s = FS_SYNC0;
+                s = (b == PROTO_SYNC_0) ? FS_SYNC1 : FS_SYNC0;
             }
             break;
         case FS_HEADER: {
@@ -216,12 +225,47 @@ static void process_recv_bytes(const uint8_t *data, size_t len)
 
 // ── Receive task ───────────────────────────────────────────────────
 
+static void close_client(void)
+{
+    int fd = s_client_fd;
+    s_client_fd = -1;
+    g_acq_running = false;
+    if (fd >= 0) close(fd);
+}
+
+static bool accept_client(void)
+{
+    struct sockaddr_in client_addr;
+    socklen_t addr_len = sizeof(client_addr);
+    int fd = accept(s_listen_fd, (struct sockaddr *)&client_addr, &addr_len);
+    if (fd < 0) {
+        ESP_LOGW(TAG, "accept() failed: %d", errno);
+        return false;
+    }
+
+    int flags = fcntl(fd, F_GETFL, 0);
+    if (flags < 0 || fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0) {
+        ESP_LOGW(TAG, "failed to configure client socket: %d", errno);
+        close(fd);
+        return false;
+    }
+
+    s_client_fd = fd;
+    s_reset_parser = true;
+    ESP_LOGI(TAG, "client connected from %s:%d",
+             inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
+    return true;
+}
+
 static void tcp_recv_task(void *arg)
 {
     uint8_t buf[4096];
     while (s_running) {
         if (s_client_fd < 0) {
-            vTaskDelay(pdMS_TO_TICKS(100));
+            ESP_LOGI(TAG, "waiting for a new client");
+            if (!accept_client()) {
+                vTaskDelay(pdMS_TO_TICKS(100));
+            }
             continue;
         }
         ssize_t n = recv(s_client_fd, buf, sizeof(buf), 0);
@@ -229,14 +273,12 @@ static void tcp_recv_task(void *arg)
             process_recv_bytes(buf, (size_t)n);
         } else if (n == 0) {
             ESP_LOGW(TAG, "client disconnected");
-            close(s_client_fd);
-            s_client_fd = -1;
+            close_client();
         } else {
             // EAGAIN = no data yet; anything else = real error
             if (errno != EAGAIN && errno != EWOULDBLOCK) {
                 ESP_LOGW(TAG, "recv error %d, closing", errno);
-                close(s_client_fd);
-                s_client_fd = -1;
+                close_client();
             }
             vTaskDelay(1);  // 1 tick (~1ms), was 10ms — critical for throughput
         }
@@ -285,24 +327,16 @@ int tcp_server_start(void)
 
     ESP_LOGI(TAG, "listening on port %d", TCP_SERVER_PORT);
 
-    // Accept one client (blocking)
-    struct sockaddr_in client_addr;
-    socklen_t addr_len = sizeof(client_addr);
-    s_client_fd = accept(s_listen_fd, (struct sockaddr *)&client_addr, &addr_len);
-    if (s_client_fd < 0) {
+    // Accept the first client (blocking). The receive task accepts replacements.
+    if (!accept_client()) {
         ESP_LOGE(TAG, "accept() failed: %d", errno);
         close(s_listen_fd);
+        s_listen_fd = -1;
         return -1;
     }
-    ESP_LOGI(TAG, "client connected from %s:%d",
-             inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
 
     // Note: setsockopt(TCP_NODELAY / SO_RCVBUF) omitted — crashes on this lwIP build.
     // Throughput is managed by PC-side pacing instead.
-
-    // Non-blocking recv with minimal polling delay (see tcp_recv_task)
-    int flags = fcntl(s_client_fd, F_GETFL, 0);
-    fcntl(s_client_fd, F_SETFL, flags | O_NONBLOCK);
 
     s_running = true;
     xTaskCreatePinnedToCore(tcp_recv_task, "tcp_recv", STACK_TCP_RECV,
@@ -315,7 +349,7 @@ void tcp_server_stop(void)
 {
     s_running = false;
     if (s_recv_task) { vTaskDelete(s_recv_task); s_recv_task = NULL; }
-    if (s_client_fd >= 0) { close(s_client_fd); s_client_fd = -1; }
+    close_client();
     if (s_listen_fd >= 0)  { close(s_listen_fd);  s_listen_fd = -1;  }
 }
 
@@ -337,8 +371,7 @@ int tcp_send(const uint8_t *data, size_t len)
             continue;
         }
         if (sent < 0 && (errno == ECONNRESET || errno == EPIPE)) {
-            close(s_client_fd);
-            s_client_fd = -1;
+            close_client();
         }
         break;
     }
