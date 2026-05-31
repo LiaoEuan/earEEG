@@ -209,7 +209,7 @@ def parse_sensor_data(frame: ParsedFrame) -> Optional[SensorData]:
     if frame.type != TYPE_SENSOR or not frame.crc_valid:
         return None
     payload = frame.payload
-    if len(payload) < SENSOR_PAYLOAD_SIZE:
+    if len(payload) != SENSOR_PAYLOAD_SIZE:
         return None
 
     offset = 0
@@ -220,6 +220,8 @@ def parse_sensor_data(frame: ParsedFrame) -> Optional[SensorData]:
     eeg_raw = payload[offset:offset + EEG_DATA_BYTES]; offset += EEG_DATA_BYTES
 
     mic_sample_count = struct.unpack_from('<H', payload, offset)[0]; offset += 2
+    if mic_sample_count != MIC_SAMPLES_PER_PACKET:
+        return None
     mic_data_len = mic_sample_count * 2  # 16-bit per sample
     mic_samples = payload[offset:offset + mic_data_len]; offset += mic_data_len
 
