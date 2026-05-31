@@ -27,15 +27,14 @@ static void packer_task_fn(void *arg)
 {
     uint16_t seq_id = 0;
     uint8_t  frame_buf[512];  // generous size for one frame
+    TickType_t last_wake = xTaskGetTickCount();
 
     while (s_running) {
         if (!g_acq_running || !tcp_is_connected()) {
             vTaskDelay(pdMS_TO_TICKS(PACKET_INTERVAL_MS));
+            last_wake = xTaskGetTickCount();
             continue;
         }
-
-        // Yield once per iteration to prevent starving IDLE on Core 0
-        vTaskDelay(1);
 
         uint64_t ts = esp_timer_get_time();
 
@@ -117,7 +116,7 @@ static void packer_task_fn(void *arg)
 
         seq_id++;
 
-        vTaskDelay(pdMS_TO_TICKS(PACKET_INTERVAL_MS));
+        vTaskDelayUntil(&last_wake, pdMS_TO_TICKS(PACKET_INTERVAL_MS));
     }
 
     vTaskDelete(NULL);

@@ -222,7 +222,7 @@ static void imu_poll_task(void *arg)
             }
         }
 
-        vTaskDelayUntil(&last_wake, pdMS_TO_TICKS(4));
+        vTaskDelayUntil(&last_wake, pdMS_TO_TICKS(PACKET_INTERVAL_MS));
     }
     vTaskDelete(NULL);
 }
