@@ -24,6 +24,38 @@ static TaskHandle_t s_tx_task_handle = NULL;
 
 static volatile bool s_running = false;
 
+static bool write_tx_block(const int16_t *samples, size_t len,
+                           unsigned *timeout_count)
+{
+    size_t total = 0;
+
+    while (s_running && total < len) {
+        size_t bytes_written = 0;
+        esp_err_t ret = i2s_channel_write(s_tx_chan,
+                                          (const uint8_t *)samples + total,
+                                          len - total, &bytes_written,
+                                          pdMS_TO_TICKS(100));
+        total += bytes_written;
+
+        if (ret == ESP_OK) {
+            continue;
+        }
+        if (ret == ESP_ERR_TIMEOUT) {
+            (*timeout_count)++;
+            if (*timeout_count <= 5 || *timeout_count % 100 == 0) {
+                ESP_LOGW(TAG, "I2S TX write timeout #%u (%u/%u bytes), retrying",
+                         *timeout_count, (unsigned)total, (unsigned)len);
+            }
+            continue;
+        }
+
+        ESP_LOGW(TAG, "I2S TX write error: %d (%u/%u bytes)",
+                 ret, (unsigned)total, (unsigned)len);
+        return false;
+    }
+    return total == len;
+}
+
 // ── RX task: read I2S DMA → extract left mono → push to mic ring buffer ──
 
 static void i2s_rx_task_fn(void *arg)
@@ -79,6 +111,7 @@ static void i2s_tx_task_fn(void *arg)
          DNLINK_START_WATERMARK_MS) / 1000;
     bool playing = false;
     unsigned underruns = 0;
+    unsigned write_timeouts = 0;
 
     // Pre-fill first DMA buffer with silence
     memset(tx_buf, 0, buf_bytes);
@@ -104,11 +137,8 @@ static void i2s_tx_task_fn(void *arg)
             memset(tx_buf, 0, buf_bytes);
         }
 
-        size_t bytes_written = 0;
-        esp_err_t ret = i2s_channel_write(s_tx_chan, tx_buf, buf_bytes,
-                                          &bytes_written, pdMS_TO_TICKS(100));
-        if (ret != ESP_OK && ret != ESP_ERR_TIMEOUT) {
-            ESP_LOGW(TAG, "I2S TX write error: %d", ret);
+        if (!write_tx_block(tx_buf, buf_bytes, &write_timeouts)) {
+            break;
         }
     }
     vTaskDelete(NULL);
@@ -120,7 +150,7 @@ bool i2s_audio_init(void)
 {
     // ── RX channel (I2S1, INMP441, 16kHz mono) ──
     i2s_chan_config_t rx_chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_1, I2S_ROLE_MASTER);
-    rx_chan_cfg.dma_desc_num = I2S_DMA_BUF_COUNT;
+    rx_chan_cfg.dma_desc_num = I2S_DMA_BUF_COUNT_RX;
     rx_chan_cfg.dma_frame_num = I2S_DMA_BUF_LEN_RX;
     if (i2s_new_channel(&rx_chan_cfg, NULL, &s_rx_chan) != ESP_OK) {
         ESP_LOGE(TAG, "i2s_new_channel RX failed");
@@ -151,7 +181,7 @@ bool i2s_audio_init(void)
 
     // ── TX channel (I2S0, PCM5102, 44.1kHz stereo) ──
     i2s_chan_config_t tx_chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_0, I2S_ROLE_MASTER);
-    tx_chan_cfg.dma_desc_num = I2S_DMA_BUF_COUNT;
+    tx_chan_cfg.dma_desc_num = I2S_DMA_BUF_COUNT_TX;
     tx_chan_cfg.dma_frame_num = I2S_DMA_BUF_LEN_TX;
     if (i2s_new_channel(&tx_chan_cfg, &s_tx_chan, NULL) != ESP_OK) {
         ESP_LOGE(TAG, "i2s_new_channel TX failed");
@@ -197,9 +227,9 @@ void i2s_audio_start(void)
     s_running = true;
 
     BaseType_t rx_ok = xTaskCreatePinnedToCore(i2s_rx_task_fn, "i2s_rx", 3072,
-                                               NULL, 5, &s_rx_task_handle, 1);
+                                               NULL, PRIO_I2S_RX, &s_rx_task_handle, 1);
     BaseType_t tx_ok = xTaskCreatePinnedToCore(i2s_tx_task_fn, "i2s_tx", 3072,
-                                               NULL, 5, &s_tx_task_handle, 1);
+                                               NULL, PRIO_I2S_TX, &s_tx_task_handle, 1);
     if (rx_ok != pdPASS || tx_ok != pdPASS) {
         ESP_LOGE(TAG, "failed to create I2S tasks");
         i2s_audio_stop();

@@ -65,9 +65,10 @@
 
 /* ── I2S DMA ────────────────────────────────────────────────────── */
 
-#define I2S_DMA_BUF_COUNT   4
-#define I2S_DMA_BUF_LEN_RX  256    // stereo samples per DMA buffer (RX)
-#define I2S_DMA_BUF_LEN_TX  128    // stereo samples per DMA buffer (TX)
+#define I2S_DMA_BUF_COUNT_RX 4
+#define I2S_DMA_BUF_COUNT_TX 8
+#define I2S_DMA_BUF_LEN_RX   256   // stereo samples per DMA buffer (RX)
+#define I2S_DMA_BUF_LEN_TX   256   // stereo samples per DMA buffer (TX)
 #define DNLINK_START_WATERMARK_MS 100
 
 /* ── Wi-Fi ───────────────────────────────────────────────────────── */
@@ -94,6 +95,8 @@
 #define PRIO_PACKER_SENDER   4
 #define PRIO_TCP_RECV        3
 #define PRIO_CMD_HANDLER     3
+#define PRIO_I2S_RX          5
+#define PRIO_I2S_TX          7
 
 #define STACK_EEG_PARSER     4096
 #define STACK_IMU_POLL        3072
