@@ -57,20 +57,10 @@ void app_main(void)
     // ── 3. Init peripherals ──
     ESP_LOGI(TAG, "initializing peripherals...");
 
-    // Test: enable ONE at a time to find the crash
-#if 1   // I2S audio
     if (!i2s_audio_init()) {
         ESP_LOGE(TAG, "I2S init failed");
         while (1) vTaskDelay(pdMS_TO_TICKS(5000));
     }
-#endif
-
-#if 0   // OpenBCI UART — deferred to after TCP connect
-    if (!uart_eeg_init()) {
-        ESP_LOGE(TAG, "UART init failed");
-        while (1) vTaskDelay(pdMS_TO_TICKS(5000));
-    }
-#endif
 
 #if 0   // test IMU - init OK but polling task crashes
     if (!imu_bno085_init()) {
@@ -80,9 +70,7 @@ void app_main(void)
 #endif
 
     // ── 4. Start background I/O (Core 1) ──
-#if 1   // I2S start
     i2s_audio_start();
-#endif
 #if 0   // IMU start
     imu_bno085_start();
 #endif
@@ -96,24 +84,15 @@ void app_main(void)
     vTaskDelay(pdMS_TO_TICKS(500));  // let TCP/ARP stabilize
 
     // ── 5b. Init UART after TCP is stable ──
-#if 1
     if (!uart_eeg_init()) {
         ESP_LOGE(TAG, "UART init failed");
         while (1) vTaskDelay(pdMS_TO_TICKS(5000));
     }
-#endif
 
     // ── 6. Start data packer (Core 0) ──
-#if 1
     data_packer_start();
-#endif
 
-    // ── 7. Send OpenBCI start command ──
-#if 0   // needs uart_eeg_init first
-    uart_eeg_start_acq();
-#endif
-
-    // ── 8. Main loop — monitor status ──
+    // ── 7. Main loop — monitor status ──
     ESP_LOGI(TAG, "system running. waiting for commands...");
     while (1) {
         vTaskDelay(pdMS_TO_TICKS(5000));
