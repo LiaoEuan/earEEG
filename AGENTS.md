@@ -30,14 +30,14 @@ pio test -d earEEG/earEEG
 
 ## Hardware
 
-| Module   | Interface | GPIO (Xiao pin) | Notes                      |
+| Module   | Interface | GPIO | Notes                      |
 |----------|-----------|-----------------|----------------------------|
 | PCM5102  | I2S0 TX   | 1/2/4 (D0/D1/D3)| BCLK=1, LRCLK=2, DIN=4     |
 | INMP441  | I2S1 RX   | 7/8/9 (D8/D9/D10)| SCK=7, WS=8, SD=9         |
 | BNO085   | I2C       | 5/6 (D4/D5)     | internal pullups on board  |
-| OpenBCI  | UART1     | 43/44 (D6/D7)   | 115200 baud                |
+| OpenBCI  | UART1     | 17/18           | TX=17, RX=18, 115200 baud  |
 
-GPIO3 (D2) is a strapping pin, leave unused. Debug output goes to USB Serial/JTAG (enabled in sdkconfig).
+GPIO3 is a strapping pin, leave unused. GPIO43/44 are reserved for the board's UART0 debug bridge.
 
 ## Architecture
 

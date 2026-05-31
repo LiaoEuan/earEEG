@@ -134,7 +134,7 @@ bool uart_eeg_init(void)
         return false;
     }
 
-    // GPIO43/44 are available after moving the console to USB Serial/JTAG.
+    // Keep GPIO43/44 available for the board's UART0 debug bridge.
     ret = uart_set_pin(OPENBCI_UART_NUM, PIN_UART_TX, PIN_UART_RX,
                        UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
     if (ret != ESP_OK) {

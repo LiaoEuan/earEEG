@@ -1,6 +1,6 @@
 # earEEG 设备使用入门指南
 
-> 基于 ESP32-S3 (Seeed Xiao ESP32S3) 的头戴式 EEG/音频/IMU 数据采集原型设备
+> 基于 ESP32-S3 DevKit (N16R8) 的头戴式 EEG/音频/IMU 数据采集原型设备
 
 ---
 
@@ -8,15 +8,15 @@
 
 ### 1.1 模块引脚分配总表
 
-| 信号 | GPIO | Xiao 丝印 | 目标器件 | 接口 |
+| 信号 | GPIO | 板卡丝印 | 目标器件 | 接口 |
 |------|------|-----------|---------|------|
 | I2S0 BCLK | GPIO1 | D0 | PCM5102 BCK | I2S TX |
 | I2S0 LRCLK | GPIO2 | D1 | PCM5102 LCK | I2S TX |
 | I2S0 DIN | GPIO4 | D3 | PCM5102 DIN | I2S TX |
 | I2C SDA | GPIO5 | D4 | BNO085 SDA | I2C |
 | I2C SCL | GPIO6 | D5 | BNO085 SCL | I2C |
-| UART TX | GPIO43 | D6 | OpenBCI RX | UART1 |
-| UART RX | GPIO44 | D7 | OpenBCI TX | UART1 |
+| UART TX | GPIO17 | U1TXD | OpenBCI RX | UART1 |
+| UART RX | GPIO18 | U1RXD | OpenBCI TX | UART1 |
 | I2S1 BCLK | GPIO7 | D8 | INMP441 SCK | I2S RX |
 | I2S1 LRCLK | GPIO8 | D9 | INMP441 WS | I2S RX |
 | I2S1 DIN | GPIO9 | D10 | INMP441 SD | I2S RX |
@@ -26,15 +26,15 @@
 - **GPIO3 (D2) 不接** — 这是 JTAG strapping pin，保留悬空
 - **PCM5102 音频输出** — Line-level (典型 2V RMS)，可直接推 32Ω 耳机，原型阶段音量有限
 - **INMP441 麦克风** — 标准 I2S 模式（不需要外部 MCLK）
-- **BNO085 IMU** — I2C 地址 0x4A；板载已有上拉电阻（Xiao D4/D5）
+- **BNO085 IMU** — I2C 地址 0x4A；确认模块侧已有上拉电阻
 - **OpenBCI 脑电板** — 独立供电，物理隔离射频干扰
 
 ### 1.3 通过 USB-C 连接电脑（推荐调试方式）
 
-Seeed Xiao ESP32S3 板载 USB-C 接口直接连接到 ESP32-S3 的 **USB Serial/JTAG** 外设，不需要外部 USB-UART 转换器。这是推荐的连接和调试方式。
+当前 DevKit 的板载 UART0 调试桥使用 GPIO43/44。这是推荐的日志连接方式，与 OpenBCI 使用的 UART1 GPIO17/18 互不冲突。
 
 接线步骤：
-1. 用 USB-C 线将 Xiao ESP32S3 连接到电脑
+1. 用 USB-C 线将 DevKit 的 UART 调试接口连接到电脑
 2. 电脑上会出现一个新的串口设备（Windows 上为 COM 端口，Linux 上为 `/dev/ttyACM0` 或类似）
 3. 运行串口监视器即可看到调试输出
 
@@ -42,14 +42,14 @@ Seeed Xiao ESP32S3 板载 USB-C 接口直接连接到 ESP32-S3 的 **USB Serial/
 
 如果希望使用外部 UART 转换器：
 
-| CH340 / USB-UART | Xiao ESP32S3 |
+| CH340 / USB-UART | ESP32-S3 DevKit |
 |-----------------|-------------|
 | TX | GPIO44 (RX) — 注意：TX→RX 交叉 |
 | RX | GPIO43 (TX) — 注意：RX→TX 交叉 |
 | GND | GND |
 | （VCC 可选） | 3.3V |
 
-**⚠️ 注意**：固件启动后，UART1（OpenBCI）会接管 GPIO43/44，因此 CH340 只能看到早期的启动输出。可靠的调试方式是通过板载 USB-C（USB Serial/JTAG）。
+**注意**：GPIO43/44 保留给 UART0 调试桥。OpenBCI 必须连接 GPIO17/18。
 
 ---
 
@@ -228,7 +228,7 @@ pio test -d earEEG/earEEG
 ### 5.2 编译环境
 
 - **平台**：PlatformIO + ESP-IDF 6.0 框架（非 Arduino）
-- **开发板**：`seeed_xiao_esp32s3`
+- **开发板**：ESP32-S3 DevKit N16R8；`seeed_xiao_esp32s3` 暂作为 PlatformIO 兼容占位符
 - **内存**：N16R8（16MB Flash / 8MB Octal PSRAM）
 - **PSRAM**：已启用（Octal 模式，80 MHz）
 
@@ -254,7 +254,7 @@ pio test -d earEEG/earEEG
 ## 七、常见问题
 
 **Q: 串口监视器看不到输出？**
-A: 优先使用板载 USB-C 连接（USB Serial/JTAG），确保 `CONFIG_USJ_ENABLE_USB_SERIAL_JTAG=y` 已在 sdkconfig 中启用。
+A: 优先连接 DevKit 的 UART 调试 USB-C 接口。固件日志走 UART0 GPIO43/44；OpenBCI 走 UART1 GPIO17/18。
 
 **Q: Wi-Fi 热点创建失败？**
 A: ESP32 默认 SSID 为 "earEEG"，密码 "password123"。如果信道干扰严重，可以通过修改 `wifi_ap.c` 中的 `AP_CHANNEL` 更换信道。

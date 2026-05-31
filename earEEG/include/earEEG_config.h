@@ -20,8 +20,8 @@
 #define PIN_I2C_SCL      GPIO_NUM_6
 
 // UART → OpenBCI
-#define PIN_UART_TX      GPIO_NUM_43
-#define PIN_UART_RX      GPIO_NUM_44
+#define PIN_UART_TX      GPIO_NUM_17
+#define PIN_UART_RX      GPIO_NUM_18
 
 /* ── Audio sample rates (§2.2) ──────────────────────────────────── */
 

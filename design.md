@@ -38,23 +38,23 @@
 
 ### 2.3 引脚分配
 
-| 信号 | GPIO | Xiao 丝印 | 目标器件 |
-|------|------|-----------|---------|
-| I2S0 BCLK | GPIO1 | D0 | PCM5102 BCK |
-| I2S0 LRCLK | GPIO2 | D1 | PCM5102 LCK |
-| I2S0 DIN | GPIO4 | D3 | PCM5102 DIN |
-| I2C SDA | GPIO5 | D4 | BNO085 SDA |
-| I2C SCL | GPIO6 | D5 | BNO085 SCL |
-| UART TX | GPIO43 | D6 | OpenBCI RX |
-| UART RX | GPIO44 | D7 | OpenBCI TX |
-| I2S1 BCLK | GPIO7 | D8 | INMP441 SCK |
-| I2S1 LRCLK | GPIO8 | D9 | INMP441 WS |
-| I2S1 DIN | GPIO9 | D10 | INMP441 SD |
+| 信号 | GPIO | 目标器件 |
+|------|------|---------|
+| I2S0 BCLK | GPIO1 | PCM5102 BCK |
+| I2S0 LRCLK | GPIO2 | PCM5102 LCK |
+| I2S0 DIN | GPIO4 | PCM5102 DIN |
+| I2C SDA | GPIO5 | BNO085 SDA |
+| I2C SCL | GPIO6 | BNO085 SCL |
+| UART1 TX | GPIO17 | OpenBCI RX |
+| UART1 RX | GPIO18 | OpenBCI TX |
+| I2S1 BCLK | GPIO7 | INMP441 SCK |
+| I2S1 LRCLK | GPIO8 | INMP441 WS |
+| I2S1 DIN | GPIO9 | INMP441 SD |
 
 说明:
 - GPIO3 (D2) 为 JTAG strapping pin，保留不接
-- 调试日志通过 USB Serial/JTAG（板载 USB-C 接口）输出，释放 UART0 给 OpenBCI
-- I2C 复用 Xiao 默认引脚 (D4/D5)，板载已有上拉电阻
+- 调试日志通过板载 UART0 调试桥输出，GPIO43/44 保留给 UART0
+- OpenBCI 使用 UART1 的 GPIO17/18
 - I2S0 和 I2S1 使用独立的时钟引脚，物理分离，减少干扰
 
 3. 软件架构设计 (基于 FreeRTOS)
