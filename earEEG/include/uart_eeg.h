@@ -18,6 +18,9 @@ extern ring_buf_t *g_rb_eeg;
 // Initialize OpenBCI UART and start parser task.
 bool uart_eeg_init(void);
 
+// Check whether the UART driver is ready for commands.
+bool uart_eeg_is_ready(void);
+
 // Start/stop EEG acquisition on the OpenBCI side (send 'b'/'s').
 void uart_eeg_start_acq(void);
 void uart_eeg_stop_acq(void);

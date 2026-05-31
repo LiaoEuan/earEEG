@@ -65,15 +65,29 @@ static void dispatch_frame(proto_header_t *hdr, const uint8_t *payload)
 
         switch (cmd->cmd_id) {
         case CMD_START_ACQ:
+            if (!uart_eeg_is_ready()) {
+                send_ack(cmd->cmd_id, 1);
+                break;
+            }
+            uart_eeg_start_acq();
             g_acq_running = true;
             send_ack(cmd->cmd_id, 0);
             break;
         case CMD_STOP_ACQ:
+            if (!uart_eeg_is_ready()) {
+                send_ack(cmd->cmd_id, 1);
+                break;
+            }
+            uart_eeg_stop_acq();
             g_acq_running = false;
             send_ack(cmd->cmd_id, 0);
             break;
         case CMD_IMPEDANCE_CTRL:
             {
+                if (!uart_eeg_is_ready()) {
+                    send_ack(cmd->cmd_id, 1);
+                    break;
+                }
                 size_t asc_len = hdr->len - 1;
                 if (asc_len > 0) {
                     uart_eeg_send_raw(payload + 1, asc_len);
@@ -84,6 +98,10 @@ static void dispatch_frame(proto_header_t *hdr, const uint8_t *payload)
             break;
         case CMD_IMPEDANCE_STOP:
             {
+                if (!uart_eeg_is_ready()) {
+                    send_ack(cmd->cmd_id, 1);
+                    break;
+                }
                 const char *stop_seq = "z100Zz200Zz300Zz400Zz500Zz600Zz700Zz800Z";
                 uart_eeg_send_raw((const uint8_t *)stop_seq, strlen(stop_seq));
                 ESP_LOGI(TAG, "impedance stop: sent disable-all");

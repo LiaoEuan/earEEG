@@ -95,7 +95,7 @@ void app_main(void)
     vTaskDelay(pdMS_TO_TICKS(500));  // let TCP/ARP stabilize
 
     // ── 5b. Init UART after TCP is stable ──
-#if 0   // disabled for audio test
+#if 1
     if (!uart_eeg_init()) {
         ESP_LOGE(TAG, "UART init failed");
         while (1) vTaskDelay(pdMS_TO_TICKS(5000));
