@@ -78,6 +78,8 @@ static void dispatch_frame(proto_header_t *hdr, const uint8_t *payload)
                 send_ack(cmd->cmd_id, 1);
                 break;
             }
+            ring_buf_reset(g_rb_eeg);
+            ring_buf_reset(g_rb_mic);
             uart_eeg_start_acq();
             g_acq_running = true;
             send_ack(cmd->cmd_id, 0);

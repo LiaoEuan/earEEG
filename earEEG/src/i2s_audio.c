@@ -13,6 +13,7 @@ static const char *TAG = "i2s_audio";
 // Global ring buffers — defined in main.c, set before i2s_audio_start()
 extern ring_buf_t *g_rb_mic;
 extern ring_buf_t *g_rb_dnlink;
+extern volatile bool g_acq_running;
 
 // I2S channel handles
 static i2s_chan_handle_t s_tx_chan = NULL;
@@ -52,11 +53,15 @@ static void i2s_rx_task_fn(void *arg)
         }
         size_t mono_bytes = stereo_samples * sizeof(int16_t);
 
-        // Write raw mono PCM to ring buffer
-        size_t wrote = ring_buf_write(g_rb_mic, (uint8_t*)mono_buf, mono_bytes);
-        if (wrote < mono_bytes) {
-            ESP_LOGW(TAG, "mic ring buffer full, partial write (%u/%u)",
-                     (unsigned)wrote, (unsigned)mono_bytes);
+        // Keep the RX channel running, but only retain samples while a
+        // connected client has requested acquisition.
+        if (!g_acq_running) continue;
+
+        if (ring_buf_free(g_rb_mic) >= mono_bytes) {
+            ring_buf_write(g_rb_mic, (uint8_t*)mono_buf, mono_bytes);
+        } else {
+            ESP_LOGW(TAG, "mic ring buffer full, dropping %u-byte block",
+                     (unsigned)mono_bytes);
         }
         (void)ts; // cycle count captured but not embedded in ring buffer
     }
