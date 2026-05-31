@@ -132,8 +132,12 @@ void data_packer_start(void)
 {
     if (s_running) return;
     s_running = true;
-    xTaskCreatePinnedToCore(packer_task_fn, "packer", STACK_PACKER_SENDER,
-                            NULL, PRIO_PACKER_SENDER, &s_packer_task, 1);
+    if (xTaskCreatePinnedToCore(packer_task_fn, "packer", STACK_PACKER_SENDER,
+                                NULL, PRIO_PACKER_SENDER, &s_packer_task, 1) != pdPASS) {
+        s_running = false;
+        ESP_LOGE(TAG, "failed to create packer task");
+        return;
+    }
     ESP_LOGI(TAG, "packer task started");
 }
 

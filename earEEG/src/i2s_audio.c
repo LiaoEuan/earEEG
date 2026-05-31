@@ -178,10 +178,15 @@ void i2s_audio_start(void)
     i2s_channel_enable(s_tx_chan);
     s_running = true;
 
-    xTaskCreatePinnedToCore(i2s_rx_task_fn, "i2s_rx", 3072, NULL, 5,
-                            &s_rx_task_handle, 1);
-    xTaskCreatePinnedToCore(i2s_tx_task_fn, "i2s_tx", 3072, NULL, 5,
-                            &s_tx_task_handle, 1);
+    BaseType_t rx_ok = xTaskCreatePinnedToCore(i2s_rx_task_fn, "i2s_rx", 3072,
+                                               NULL, 5, &s_rx_task_handle, 1);
+    BaseType_t tx_ok = xTaskCreatePinnedToCore(i2s_tx_task_fn, "i2s_tx", 3072,
+                                               NULL, 5, &s_tx_task_handle, 1);
+    if (rx_ok != pdPASS || tx_ok != pdPASS) {
+        ESP_LOGE(TAG, "failed to create I2S tasks");
+        i2s_audio_stop();
+        return;
+    }
     ESP_LOGI(TAG, "I2S streaming started");
 }
 

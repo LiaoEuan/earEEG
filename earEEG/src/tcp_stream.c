@@ -349,8 +349,15 @@ int tcp_server_start(void)
     // Throughput is managed by PC-side pacing instead.
 
     s_running = true;
-    xTaskCreatePinnedToCore(tcp_recv_task, "tcp_recv", STACK_TCP_RECV,
-                            NULL, PRIO_TCP_RECV, &s_recv_task, 0);
+    if (xTaskCreatePinnedToCore(tcp_recv_task, "tcp_recv", STACK_TCP_RECV,
+                                NULL, PRIO_TCP_RECV, &s_recv_task, 0) != pdPASS) {
+        ESP_LOGE(TAG, "failed to create TCP receive task");
+        close_client();
+        close(s_listen_fd);
+        s_listen_fd = -1;
+        s_running = false;
+        return -1;
+    }
 
     return s_client_fd;
 }

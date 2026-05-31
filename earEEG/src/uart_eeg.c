@@ -165,8 +165,13 @@ void uart_eeg_start_acq(void)
     // and Core 0 can't handle LWIP + UART interrupts simultaneously.
     if (!s_running) {
         s_running = true;
-        xTaskCreatePinnedToCore(eeg_parser_task, "eeg_parser", STACK_EEG_PARSER,
-                                NULL, PRIO_EEG_PARSER, &s_parser_task, 1);
+        if (xTaskCreatePinnedToCore(eeg_parser_task, "eeg_parser", STACK_EEG_PARSER,
+                                    NULL, PRIO_EEG_PARSER, &s_parser_task, 1) != pdPASS) {
+            s_running = false;
+            uart_write_bytes(OPENBCI_UART_NUM, "s", 1);
+            ESP_LOGE(TAG, "failed to create EEG parser task");
+            return;
+        }
     }
     ESP_LOGI(TAG, "sent start command");
 }
