@@ -16,3 +16,6 @@ int tcp_send(const uint8_t *data, size_t len);
 
 // Check if client is connected.
 bool tcp_is_connected(void);
+
+// Complete a deferred START_ACQ command after the OpenBCI UART is ready.
+void tcp_stream_on_uart_ready(void);

@@ -34,6 +34,7 @@ static TaskHandle_t  s_recv_task  = NULL;
 static volatile bool s_running    = false;
 static SemaphoreHandle_t s_send_mutex = NULL;
 static volatile bool s_reset_parser = false;
+static bool s_start_acq_pending = false;
 
 static void send_ack(uint8_t cmd_id, uint8_t status)
 {
@@ -48,6 +49,22 @@ static void send_ack(uint8_t cmd_id, uint8_t status)
 }
 
 // ── Frame receive & dispatch ───────────────────────────────────────
+
+static void process_pending_start_acq(void)
+{
+    if (!uart_eeg_is_ready() ||
+        !__atomic_exchange_n(&s_start_acq_pending, false, __ATOMIC_ACQ_REL)) {
+        return;
+    }
+
+    if (!g_acq_running) {
+        ring_buf_reset(g_rb_eeg);
+        ring_buf_reset(g_rb_mic);
+        uart_eeg_start_acq();
+        g_acq_running = true;
+    }
+    send_ack(CMD_START_ACQ, 0);
+}
 
 static void dispatch_frame(proto_header_t *hdr, const uint8_t *payload)
 {
@@ -74,17 +91,14 @@ static void dispatch_frame(proto_header_t *hdr, const uint8_t *payload)
 
         switch (cmd->cmd_id) {
         case CMD_START_ACQ:
+            __atomic_store_n(&s_start_acq_pending, true, __ATOMIC_RELEASE);
             if (!uart_eeg_is_ready()) {
-                send_ack(cmd->cmd_id, 1);
-                break;
+                ESP_LOGI(TAG, "UART not ready, deferring START_ACQ");
             }
-            ring_buf_reset(g_rb_eeg);
-            ring_buf_reset(g_rb_mic);
-            uart_eeg_start_acq();
-            g_acq_running = true;
-            send_ack(cmd->cmd_id, 0);
+            process_pending_start_acq();
             break;
         case CMD_STOP_ACQ:
+            __atomic_store_n(&s_start_acq_pending, false, __ATOMIC_RELEASE);
             if (!uart_eeg_is_ready()) {
                 send_ack(cmd->cmd_id, 1);
                 break;
@@ -239,6 +253,7 @@ static void close_client(void)
 {
     int fd = s_client_fd;
     s_client_fd = -1;
+    __atomic_store_n(&s_start_acq_pending, false, __ATOMIC_RELEASE);
     g_acq_running = false;
     if (fd >= 0) close(fd);
 }
@@ -400,4 +415,9 @@ int tcp_send(const uint8_t *data, size_t len)
 bool tcp_is_connected(void)
 {
     return s_client_fd >= 0;
+}
+
+void tcp_stream_on_uart_ready(void)
+{
+    process_pending_start_acq();
 }

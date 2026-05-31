@@ -88,6 +88,7 @@ void app_main(void)
         ESP_LOGE(TAG, "UART init failed");
         while (1) vTaskDelay(pdMS_TO_TICKS(5000));
     }
+    tcp_stream_on_uart_ready();
 
     // ── 6. Start data packer (Core 0) ──
     data_packer_start();
