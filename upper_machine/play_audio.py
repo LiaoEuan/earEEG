@@ -10,6 +10,7 @@ import argparse
 import socket
 import struct
 import sys
+import threading
 import time
 import wave
 
@@ -38,6 +39,14 @@ def send_audio_file(host: str, port: int, wav_path: str, *,
 
     if framerate != 44100:
         print(f"[play] WARNING: expected 44100Hz, got {framerate}Hz")
+    if nchannels not in (1, 2):
+        print(f"[play] unsupported channel count: {nchannels} (expected mono or stereo)")
+        wf.close()
+        return
+    if sampwidth not in (2, 3, 4):
+        print(f"[play] unsupported sample width: {sampwidth}B (expected 16/24/32-bit PCM)")
+        wf.close()
+        return
 
     # ── Connect ─────────────────────────────────────────────────
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -51,8 +60,25 @@ def send_audio_file(host: str, port: int, wav_path: str, *,
 
     # Disable Nagle for low-latency small-packet sends
     sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-    sock.settimeout(30)
+    sock.settimeout(1.0)
     print(f"[play] connected to {host}:{port}")
+
+    # Keep reading ACK and optional sensor uplink frames so the ESP32 send path
+    # cannot stall while this process is primarily streaming audio downlink.
+    stop_reader = threading.Event()
+
+    def drain_incoming():
+        while not stop_reader.is_set():
+            try:
+                if not sock.recv(4096):
+                    break
+            except socket.timeout:
+                continue
+            except OSError:
+                break
+
+    reader_thread = threading.Thread(target=drain_incoming, daemon=True)
+    reader_thread.start()
 
     # ── Optional: start acquisition (enables uplink sensor data) ──
     if start_acq:
@@ -121,6 +147,8 @@ def send_audio_file(host: str, port: int, wav_path: str, *,
                     eof = True
                     break
                 raw = convert_chunk(raw)
+                if len(raw) % 4 != 0:
+                    raise ValueError("converted PCM is not aligned to stereo 16-bit samples")
                 payload = struct.pack('B', 0x02) + raw
                 frame = build_frame(TYPE_DNLINK_AUDIO, 0, payload)
                 sock.sendall(frame)
@@ -149,12 +177,16 @@ def send_audio_file(host: str, port: int, wav_path: str, *,
         print("\n[play] interrupted")
     except OSError as e:
         print(f"[play] send error: {e}")
+    except ValueError as e:
+        print(f"[play] invalid audio data: {e}")
     finally:
         elapsed = time.time() - t0
         kbps = total_bytes * 8 / 1000 / max(elapsed, 0.001)
         print(f"[play] done: {total_bytes/1024:.0f} KB in {elapsed:.1f}s ({kbps:.0f} kbps)")
         wf.close()
+        stop_reader.set()
         sock.close()
+        reader_thread.join(timeout=1.0)
 
 
 def main():
