@@ -110,6 +110,7 @@ static void i2s_tx_task_fn(void *arg)
         (SAMPLE_RATE_TX * TX_CHANNELS * sizeof(int16_t) *
          DNLINK_START_WATERMARK_MS) / 1000;
     bool playing = false;
+    bool had_underrun = false;
     unsigned underruns = 0;
     unsigned write_timeouts = 0;
 
@@ -120,10 +121,21 @@ static void i2s_tx_task_fn(void *arg)
 
     while (s_running) {
         size_t avail = g_rb_dnlink ? ring_buf_avail(g_rb_dnlink) : 0;
-        if (!playing && avail >= start_watermark) {
+
+        // First start: wait for the full start_watermark.
+        // Recovery after underrun: only wait for one DMA block so the gap is
+        // as short as possible (~6 ms instead of 300 ms).
+        const size_t needed = (!playing && had_underrun) ? buf_bytes : start_watermark;
+
+        if (!playing && avail >= needed) {
             playing = true;
-            ESP_LOGI(TAG, "downlink playback started (%u bytes buffered)",
-                     (unsigned)avail);
+            if (!had_underrun) {
+                ESP_LOGI(TAG, "downlink playback started (%u bytes buffered)",
+                         (unsigned)avail);
+            } else {
+                ESP_LOGI(TAG, "downlink underrun recovered (%u bytes buffered)",
+                         (unsigned)avail);
+            }
         }
 
         if (playing && avail >= buf_bytes) {
@@ -131,6 +143,7 @@ static void i2s_tx_task_fn(void *arg)
         } else {
             if (playing) {
                 playing = false;
+                had_underrun = true;
                 underruns++;
                 ESP_LOGW(TAG, "downlink underrun #%u, rebuffering", underruns);
             }

@@ -70,6 +70,7 @@ size_t ring_buf_write(ring_buf_t *rb, const uint8_t *data, size_t len)
     }
 
     rb->head = (head + to_write) % cap;
+    __sync_synchronize(); // ensure Core 1 sees updated head
     return to_write;
 }
 
@@ -92,6 +93,7 @@ size_t ring_buf_read(ring_buf_t *rb, uint8_t *out, size_t max_len)
     }
 
     rb->tail = (tail + to_read) % cap;
+    __sync_synchronize(); // ensure Core 0 sees updated tail
     return to_read;
 }
 

@@ -7,6 +7,7 @@ Usage:
 """
 
 import argparse
+import ctypes
 import socket
 import struct
 import sys
@@ -21,8 +22,19 @@ from upper_machine.common.protocol import (
 
 def send_audio_file(host: str, port: int, wav_path: str, *,
                     start_acq: bool = False, prefill_ms: int = 500,
-                    batch_ms: int = 20):
+                    batch_ms: int = 50):
     """Connect to ESP32 and stream a WAV file with real-time pacing."""
+
+    # ── Raise Windows timer resolution to 1 ms for accurate pacing ──
+    # On Windows the default sleep granularity is ~15.6 ms, which causes
+    # bursty delivery and underruns. timeBeginPeriod(1) brings it to ~1 ms.
+    _winmm = None
+    if sys.platform == 'win32':
+        try:
+            _winmm = ctypes.windll.winmm
+            _winmm.timeBeginPeriod(1)
+        except Exception:
+            _winmm = None
 
     # ── Open WAV ────────────────────────────────────────────────
     try:
@@ -187,6 +199,8 @@ def send_audio_file(host: str, port: int, wav_path: str, *,
         stop_reader.set()
         sock.close()
         reader_thread.join(timeout=1.0)
+        if _winmm is not None:
+            _winmm.timeEndPeriod(1)
 
 
 def main():
@@ -198,8 +212,9 @@ def main():
                         help="enable uplink sensor data (default: audio-only)")
     parser.add_argument("--prefill", type=int, default=500,
                         help="pre-fill buffer duration in ms (default: 500)")
-    parser.add_argument("--batch-ms", type=int, default=20,
-                        help="audio sent per pacing cycle in ms (default: 20)")
+    parser.add_argument("--batch-ms", type=int, default=50,
+                        help="audio sent per pacing cycle in ms (default: 50)")
+
     args = parser.parse_args()
     send_audio_file(args.host, args.port, args.wav,
                     start_acq=args.start_acq, prefill_ms=args.prefill,
