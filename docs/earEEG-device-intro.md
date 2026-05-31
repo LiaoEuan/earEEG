@@ -10,24 +10,39 @@
 
 | 信号 | GPIO | 板卡丝印 | 目标器件 | 接口 |
 |------|------|-----------|---------|------|
-| I2S0 BCLK | GPIO1 | D0 | PCM5102 BCK | I2S TX |
-| I2S0 LRCLK | GPIO2 | D1 | PCM5102 LCK | I2S TX |
-| I2S0 DIN | GPIO4 | D3 | PCM5102 DIN | I2S TX |
-| I2C SDA | GPIO5 | D4 | BNO085 SDA | I2C |
-| I2C SCL | GPIO6 | D5 | BNO085 SCL | I2C |
-| UART TX | GPIO17 | U1TXD | OpenBCI RX | UART1 |
-| UART RX | GPIO18 | U1RXD | OpenBCI TX | UART1 |
-| I2S1 BCLK | GPIO7 | D8 | INMP441 SCK | I2S RX |
-| I2S1 LRCLK | GPIO8 | D9 | INMP441 WS | I2S RX |
-| I2S1 DIN | GPIO9 | D10 | INMP441 SD | I2S RX |
+| I2S0 BCLK | GPIO1 | GPIO1 | PCM5102 BCK | I2S TX |
+| I2S0 LRCLK | GPIO2 | GPIO2 | PCM5102 LCK | I2S TX |
+| I2S0 DIN | GPIO4 | GPIO4 | PCM5102 DIN | I2S TX |
+| I2C SDA | GPIO5 | GPIO5 | BNO085 SDA | I2C |
+| I2C SCL | GPIO6 | GPIO6 | BNO085 SCL | I2C |
+| UART TX | GPIO17 | GPIO17 / U1TXD | OpenBCI RX | UART1 |
+| UART RX | GPIO18 | GPIO18 / U1RXD | OpenBCI TX | UART1 |
+| I2S1 BCLK | GPIO7 | GPIO7 | INMP441 SCK | I2S RX |
+| I2S1 LRCLK | GPIO8 | GPIO8 | INMP441 WS | I2S RX |
+| I2S1 DIN | GPIO9 | GPIO9 | INMP441 SD | I2S RX |
+
+> 当前硬件是 ESP32-S3 DevKit，不是 Seeed Xiao。请按照板上标出的 `GPIOx`
+> 连接，不要按照 Xiao 的 `Dx` 编号连接。
+
+除上表中的信号线外，还必须连接以下辅助引脚：
+
+| 模块 | 必接辅助连线 | 说明 |
+|------|-------------|------|
+| PCM5102 | GND → GND；VIN → 模块支持的电源 | 常见模块支持 3.3V 或 5V，接线前确认模块丝印 |
+| INMP441 | GND → GND；VDD → 3.3V；L/R → GND | 固件读取左声道，因此 `L/R` 必须接 GND |
+| BNO085 | GND → GND；VIN → 3.3V | 确认模块侧已有 I2C 上拉电阻 |
+| OpenBCI | TX → GPIO18；RX → GPIO17；GND → GND | UART 信号必须交叉连接 |
+
+OpenBCI 可以独立供电，但直接使用 UART 连接时仍然必须与 ESP32 共地。
+如果需要真正的电气隔离，应增加数字隔离器，不能只断开 GND。
 
 ### 1.2 接线注意事项
 
-- **GPIO3 (D2) 不接** — 这是 JTAG strapping pin，保留悬空
+- **GPIO3 不接** — 这是 strapping pin，保留悬空
 - **PCM5102 音频输出** — Line-level (典型 2V RMS)，可直接推 32Ω 耳机，原型阶段音量有限
 - **INMP441 麦克风** — 标准 I2S 模式（不需要外部 MCLK）
 - **BNO085 IMU** — I2C 地址 0x4A；确认模块侧已有上拉电阻
-- **OpenBCI 脑电板** — 独立供电，物理隔离射频干扰
+- **OpenBCI 脑电板** — 建议独立供电以降低干扰；直接 UART 连接时仍需共地
 
 ### 1.3 通过 USB-C 连接电脑（推荐调试方式）
 
