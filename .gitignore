@@ -1,0 +1,6 @@
+.omo/
+.pio/
+**/.pio/
+__pycache__/
+*.py[cod]
+
