@@ -55,7 +55,15 @@ static void dispatch_frame(proto_header_t *hdr, const uint8_t *payload)
     case PROTO_TYPE_DNLINK_AUDIO:
         // Skip CHN byte in payload — ring buffer expects pure PCM
         if (g_rb_dnlink && hdr->len > 1) {
-            ring_buf_write(g_rb_dnlink, payload + 1, hdr->len - 1);
+            size_t pcm_len = hdr->len - 1;
+            size_t sample_bytes = TX_CHANNELS * sizeof(int16_t);
+            if (payload[0] != TX_CHANNELS || pcm_len % sample_bytes != 0) {
+                ESP_LOGW(TAG, "invalid downlink audio payload");
+            } else if (ring_buf_free(g_rb_dnlink) >= pcm_len) {
+                ring_buf_write(g_rb_dnlink, payload + 1, pcm_len);
+            } else {
+                ESP_LOGW(TAG, "downlink audio buffer full, dropping frame");
+            }
         }
         break;
 
