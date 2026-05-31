@@ -67,7 +67,8 @@
 
 #define I2S_DMA_BUF_COUNT   4
 #define I2S_DMA_BUF_LEN_RX  256    // stereo samples per DMA buffer (RX)
-#define I2S_DMA_BUF_LEN_TX  512    // stereo samples per DMA buffer (TX)
+#define I2S_DMA_BUF_LEN_TX  128    // stereo samples per DMA buffer (TX)
+#define DNLINK_START_WATERMARK_MS 100
 
 /* ── Wi-Fi ───────────────────────────────────────────────────────── */
 

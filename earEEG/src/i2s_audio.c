@@ -72,9 +72,13 @@ static void i2s_rx_task_fn(void *arg)
 
 static void i2s_tx_task_fn(void *arg)
 {
-    // 256 stereo samples = 1024 bytes of interleaved 16-bit L/R
-    int16_t tx_buf[256 * 2];
+    int16_t tx_buf[I2S_DMA_BUF_LEN_TX * TX_CHANNELS];
     const size_t buf_bytes = sizeof(tx_buf);
+    const size_t start_watermark =
+        (SAMPLE_RATE_TX * TX_CHANNELS * sizeof(int16_t) *
+         DNLINK_START_WATERMARK_MS) / 1000;
+    bool playing = false;
+    unsigned underruns = 0;
 
     // Pre-fill first DMA buffer with silence
     memset(tx_buf, 0, buf_bytes);
@@ -82,11 +86,21 @@ static void i2s_tx_task_fn(void *arg)
     i2s_channel_write(s_tx_chan, tx_buf, buf_bytes, &written, portMAX_DELAY);
 
     while (s_running) {
-        // Try to pull from downlink ring buffer
-        if (g_rb_dnlink && ring_buf_avail(g_rb_dnlink) >= buf_bytes) {
+        size_t avail = g_rb_dnlink ? ring_buf_avail(g_rb_dnlink) : 0;
+        if (!playing && avail >= start_watermark) {
+            playing = true;
+            ESP_LOGI(TAG, "downlink playback started (%u bytes buffered)",
+                     (unsigned)avail);
+        }
+
+        if (playing && avail >= buf_bytes) {
             ring_buf_read(g_rb_dnlink, (uint8_t*)tx_buf, buf_bytes);
         } else {
-            // No audio available → output silence
+            if (playing) {
+                playing = false;
+                underruns++;
+                ESP_LOGW(TAG, "downlink underrun #%u, rebuffering", underruns);
+            }
             memset(tx_buf, 0, buf_bytes);
         }
 
@@ -106,6 +120,8 @@ bool i2s_audio_init(void)
 {
     // ── RX channel (I2S1, INMP441, 16kHz mono) ──
     i2s_chan_config_t rx_chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_1, I2S_ROLE_MASTER);
+    rx_chan_cfg.dma_desc_num = I2S_DMA_BUF_COUNT;
+    rx_chan_cfg.dma_frame_num = I2S_DMA_BUF_LEN_RX;
     if (i2s_new_channel(&rx_chan_cfg, NULL, &s_rx_chan) != ESP_OK) {
         ESP_LOGE(TAG, "i2s_new_channel RX failed");
         return false;
@@ -135,6 +151,8 @@ bool i2s_audio_init(void)
 
     // ── TX channel (I2S0, PCM5102, 44.1kHz stereo) ──
     i2s_chan_config_t tx_chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_0, I2S_ROLE_MASTER);
+    tx_chan_cfg.dma_desc_num = I2S_DMA_BUF_COUNT;
+    tx_chan_cfg.dma_frame_num = I2S_DMA_BUF_LEN_TX;
     if (i2s_new_channel(&tx_chan_cfg, &s_tx_chan, NULL) != ESP_OK) {
         ESP_LOGE(TAG, "i2s_new_channel TX failed");
         return false;
