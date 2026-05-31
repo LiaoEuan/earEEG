@@ -20,7 +20,8 @@ from upper_machine.common.protocol import (
 
 
 def send_audio_file(host: str, port: int, wav_path: str, *,
-                    start_acq: bool = False, prefill_ms: int = 500):
+                    start_acq: bool = False, prefill_ms: int = 500,
+                    batch_ms: int = 20):
     """Connect to ESP32 and stream a WAV file with real-time pacing."""
 
     # ── Open WAV ────────────────────────────────────────────────
@@ -98,9 +99,8 @@ def send_audio_file(host: str, port: int, wav_path: str, *,
     # Pre-fill: burst the first N chunks to build ring-buffer headroom
     prefill_count = max(1, int(prefill_ms / 1000 / chunk_sec))
 
-    # Batch: send ~50ms of audio per pacing cycle
-    # (avoids Windows 15ms timer-resolution issues)
-    batch_size = max(1, int(0.050 / chunk_sec))  # ≈ 5 chunks
+    # Keep bursts short while remaining above typical Windows timer granularity.
+    batch_size = max(1, int(batch_ms / 1000 / chunk_sec))
 
     print(f"[play] chunk={samples_per_chunk}smp ({chunk_sec*1000:.0f}ms)  "
           f"prefill={prefill_count} ({prefill_count*chunk_sec*1000:.0f}ms)  "
@@ -198,9 +198,12 @@ def main():
                         help="enable uplink sensor data (default: audio-only)")
     parser.add_argument("--prefill", type=int, default=500,
                         help="pre-fill buffer duration in ms (default: 500)")
+    parser.add_argument("--batch-ms", type=int, default=20,
+                        help="audio sent per pacing cycle in ms (default: 20)")
     args = parser.parse_args()
     send_audio_file(args.host, args.port, args.wav,
-                    start_acq=args.start_acq, prefill_ms=args.prefill)
+                    start_acq=args.start_acq, prefill_ms=args.prefill,
+                    batch_ms=args.batch_ms)
 
 
 if __name__ == "__main__":
