@@ -1,5 +1,7 @@
 #pragma once
 
+#include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 /* ── Frame constants (§4.2) ─────────────────────────────────────── */
@@ -60,3 +62,9 @@ typedef struct {
     uint8_t  status;       // 0 = success
 } ack_payload_t;
 #pragma pack(pop)
+
+// Build a complete wire frame, including CRC. Payload may already live at
+// out + PROTO_HEADER_SIZE.
+bool proto_build_frame(uint8_t type, uint64_t timestamp,
+                       const uint8_t *payload, uint16_t payload_len,
+                       uint8_t *out, size_t out_capacity, size_t *out_len);

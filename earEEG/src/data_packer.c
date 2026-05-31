@@ -1,7 +1,6 @@
 #include "data_packer.h"
 #include "earEEG_config.h"
 #include "protocol.h"
-#include "crc16.h"
 #include "ring_buf.h"
 #include "i2c_imu.h"
 #include "tcp_stream.h"
@@ -9,7 +8,6 @@
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include <arpa/inet.h>
 #include <string.h>
 
 static const char *TAG = "packer";
@@ -43,7 +41,7 @@ static void packer_task_fn(void *arg)
 
         // ── Build payload first (we need to know LEN) ──
 
-#define PAYLOAD_OFFSET (2 + 1 + 2)  // after sync0,sync1,type,len
+#define PAYLOAD_OFFSET PROTO_HEADER_SIZE
 
         // SEQ ID
         uint8_t *seq_p = (uint8_t *)&seq_id;
@@ -102,25 +100,20 @@ static void packer_task_fn(void *arg)
 
         // ── Build header ──
         uint16_t payload_len = SENSOR_PAYLOAD_SIZE;
-        frame_buf[0] = PROTO_SYNC_0;
-        frame_buf[1] = PROTO_SYNC_1;
-        frame_buf[2] = PROTO_TYPE_SENSOR;
-        uint16_t len_be = htons(payload_len);
-        memcpy(frame_buf + 3, &len_be, 2);
+        size_t frame_size = 0;
 
         // TIMESTAMP (little-endian u64)
-        for (int i = 0; i < 8; i++) {
-            frame_buf[5 + i] = (uint8_t)(ts >> (i * 8));
+        if (!proto_build_frame(PROTO_TYPE_SENSOR, ts,
+                               frame_buf + PAYLOAD_OFFSET, payload_len,
+                               frame_buf, sizeof(frame_buf), &frame_size)) {
+            ESP_LOGE(TAG, "failed to build sensor frame");
+            continue;
         }
 
         // ── CRC16 over header + payload ──
-        size_t frame_size = PROTO_HEADER_SIZE + payload_len;
-        uint16_t crc = crc16_ibm(frame_buf, frame_size);
-        frame_buf[frame_size]     = (uint8_t)crc;
-        frame_buf[frame_size + 1] = (uint8_t)(crc >> 8);
 
         // ── Send ──
-        tcp_send(frame_buf, frame_size + PROTO_CRC_SIZE);
+        tcp_send(frame_buf, frame_size);
 
         seq_id++;
 

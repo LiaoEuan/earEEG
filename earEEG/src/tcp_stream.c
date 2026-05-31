@@ -7,6 +7,7 @@
 #include "uart_eeg.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include "freertos/task.h"
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -31,6 +32,19 @@ static volatile int  s_client_fd = -1;
 static int           s_listen_fd = -1;
 static TaskHandle_t  s_recv_task  = NULL;
 static volatile bool s_running    = false;
+static SemaphoreHandle_t s_send_mutex = NULL;
+
+static void send_ack(uint8_t cmd_id, uint8_t status)
+{
+    ack_payload_t ack = { .cmd_id = cmd_id, .status = status };
+    uint8_t frame[PROTO_FRAME_OVERHEAD + sizeof(ack)];
+    size_t frame_len = 0;
+
+    if (proto_build_frame(PROTO_TYPE_ACK, 0, (const uint8_t *)&ack, sizeof(ack),
+                          frame, sizeof(frame), &frame_len)) {
+        tcp_send(frame, frame_len);
+    }
+}
 
 // ── Frame receive & dispatch ───────────────────────────────────────
 
@@ -52,48 +66,11 @@ static void dispatch_frame(proto_header_t *hdr, const uint8_t *payload)
         switch (cmd->cmd_id) {
         case CMD_START_ACQ:
             g_acq_running = true;
-            {
-                ack_payload_t ack = { .cmd_id = cmd->cmd_id, .status = 0 };
-                // Send ACK
-                proto_header_t ack_hdr = {
-                    .sync0 = PROTO_SYNC_0, .sync1 = PROTO_SYNC_1,
-                    .type = PROTO_TYPE_ACK,
-                    .len = 2,
-                    .timestamp = 0,
-                };
-                uint16_t len_be = htons(ack_hdr.len);
-                uint8_t frame[PROTO_FRAME_OVERHEAD + 2];
-                size_t pos = 0;
-                memcpy(frame + pos, &ack_hdr, sizeof(ack_hdr) - sizeof(ack_hdr.len)); pos += 11;
-                memcpy(frame + pos, &len_be, 2); pos += 2;
-                memcpy(frame + pos, &ack, sizeof(ack)); pos += sizeof(ack);
-                uint16_t crc = crc16_ibm(frame, pos);
-                frame[pos++] = (uint8_t)crc;
-                frame[pos++] = (uint8_t)(crc >> 8);
-                tcp_send(frame, pos);
-            }
+            send_ack(cmd->cmd_id, 0);
             break;
         case CMD_STOP_ACQ:
             g_acq_running = false;
-            {
-                ack_payload_t ack = { .cmd_id = cmd->cmd_id, .status = 0 };
-                proto_header_t ack_hdr = {
-                    .sync0 = PROTO_SYNC_0, .sync1 = PROTO_SYNC_1,
-                    .type = PROTO_TYPE_ACK,
-                    .len = 2,
-                    .timestamp = 0,
-                };
-                uint16_t len_be = htons(ack_hdr.len);
-                uint8_t frame[PROTO_FRAME_OVERHEAD + 2];
-                size_t pos = 0;
-                memcpy(frame + pos, &ack_hdr, sizeof(ack_hdr) - sizeof(ack_hdr.len)); pos += 11;
-                memcpy(frame + pos, &len_be, 2); pos += 2;
-                memcpy(frame + pos, &ack, sizeof(ack)); pos += sizeof(ack);
-                uint16_t crc = crc16_ibm(frame, pos);
-                frame[pos++] = (uint8_t)crc;
-                frame[pos++] = (uint8_t)(crc >> 8);
-                tcp_send(frame, pos);
-            }
+            send_ack(cmd->cmd_id, 0);
             break;
         case CMD_IMPEDANCE_CTRL:
             {
@@ -102,23 +79,7 @@ static void dispatch_frame(proto_header_t *hdr, const uint8_t *payload)
                     uart_eeg_send_raw(payload + 1, asc_len);
                 }
                 ESP_LOGI(TAG, "impedance ctrl: %.*s", (int)asc_len, payload + 1);
-                ack_payload_t ack = { .cmd_id = cmd->cmd_id, .status = 0 };
-                proto_header_t ack_hdr = {
-                    .sync0 = PROTO_SYNC_0, .sync1 = PROTO_SYNC_1,
-                    .type = PROTO_TYPE_ACK,
-                    .len = 2,
-                    .timestamp = 0,
-                };
-                uint16_t len_be = htons(ack_hdr.len);
-                uint8_t ack_frame[PROTO_FRAME_OVERHEAD + 2];
-                size_t ack_pos = 0;
-                memcpy(ack_frame + ack_pos, &ack_hdr, sizeof(ack_hdr) - sizeof(ack_hdr.len)); ack_pos += 11;
-                memcpy(ack_frame + ack_pos, &len_be, 2); ack_pos += 2;
-                memcpy(ack_frame + ack_pos, &ack, sizeof(ack)); ack_pos += sizeof(ack);
-                uint16_t crc = crc16_ibm(ack_frame, ack_pos);
-                ack_frame[ack_pos++] = (uint8_t)crc;
-                ack_frame[ack_pos++] = (uint8_t)(crc >> 8);
-                tcp_send(ack_frame, ack_pos);
+                send_ack(cmd->cmd_id, 0);
             }
             break;
         case CMD_IMPEDANCE_STOP:
@@ -126,23 +87,7 @@ static void dispatch_frame(proto_header_t *hdr, const uint8_t *payload)
                 const char *stop_seq = "z100Zz200Zz300Zz400Zz500Zz600Zz700Zz800Z";
                 uart_eeg_send_raw((const uint8_t *)stop_seq, strlen(stop_seq));
                 ESP_LOGI(TAG, "impedance stop: sent disable-all");
-                ack_payload_t ack = { .cmd_id = cmd->cmd_id, .status = 0 };
-                proto_header_t ack_hdr = {
-                    .sync0 = PROTO_SYNC_0, .sync1 = PROTO_SYNC_1,
-                    .type = PROTO_TYPE_ACK,
-                    .len = 2,
-                    .timestamp = 0,
-                };
-                uint16_t len_be = htons(ack_hdr.len);
-                uint8_t ack_frame[PROTO_FRAME_OVERHEAD + 2];
-                size_t ack_pos = 0;
-                memcpy(ack_frame + ack_pos, &ack_hdr, sizeof(ack_hdr) - sizeof(ack_hdr.len)); ack_pos += 11;
-                memcpy(ack_frame + ack_pos, &len_be, 2); ack_pos += 2;
-                memcpy(ack_frame + ack_pos, &ack, sizeof(ack)); ack_pos += sizeof(ack);
-                uint16_t crc = crc16_ibm(ack_frame, ack_pos);
-                ack_frame[ack_pos++] = (uint8_t)crc;
-                ack_frame[ack_pos++] = (uint8_t)(crc >> 8);
-                tcp_send(ack_frame, ack_pos);
+                send_ack(cmd->cmd_id, 0);
             }
             break;
         default:
@@ -285,6 +230,14 @@ static void tcp_recv_task(void *arg)
 
 int tcp_server_start(void)
 {
+    if (!s_send_mutex) {
+        s_send_mutex = xSemaphoreCreateMutex();
+        if (!s_send_mutex) {
+            ESP_LOGE(TAG, "send mutex allocation failed");
+            return -1;
+        }
+    }
+
     s_listen_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (s_listen_fd < 0) {
         ESP_LOGE(TAG, "socket() failed: %d", errno);
@@ -350,15 +303,30 @@ void tcp_server_stop(void)
 
 int tcp_send(const uint8_t *data, size_t len)
 {
-    if (s_client_fd < 0) return -1;
-    ssize_t sent = send(s_client_fd, data, len, 0);
-    if (sent < 0) {
-        if (errno == ECONNRESET || errno == EPIPE) {
+    if (!data || len == 0 || s_client_fd < 0 || !s_send_mutex) return -1;
+    if (xSemaphoreTake(s_send_mutex, pdMS_TO_TICKS(1000)) != pdTRUE) return -1;
+
+    size_t total = 0;
+    while (total < len && s_client_fd >= 0) {
+        ssize_t sent = send(s_client_fd, data + total, len - total, 0);
+        if (sent > 0) {
+            total += (size_t)sent;
+            continue;
+        }
+        if (sent < 0 && errno == EINTR) continue;
+        if (sent < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+            vTaskDelay(1);
+            continue;
+        }
+        if (sent < 0 && (errno == ECONNRESET || errno == EPIPE)) {
             close(s_client_fd);
             s_client_fd = -1;
         }
+        break;
     }
-    return (int)sent;
+
+    xSemaphoreGive(s_send_mutex);
+    return total == len ? (int)total : -1;
 }
 
 bool tcp_is_connected(void)
