@@ -19,13 +19,15 @@ static const char *TAG = "wm8960";
 #define WM8960_REG_RESET      0x0F
 #define WM8960_REG_PWR_MGMT1  0x19
 #define WM8960_REG_PWR_MGMT2  0x1A
+#define WM8960_REG_ADD_CTRL1  0x17
+#define WM8960_REG_ADD_CTRL2  0x18
 #define WM8960_REG_LOUT_MIX   0x22
 #define WM8960_REG_ROUT_MIX   0x25
+#define WM8960_REG_LOUT2_VOL  0x28
+#define WM8960_REG_ROUT2_VOL  0x29
 #define WM8960_REG_PWR_MGMT3  0x2F
-#define WM8960_REG_PLL1       0x34
-#define WM8960_REG_PLL2       0x35
-#define WM8960_REG_PLL3       0x36
-#define WM8960_REG_PLL4       0x37
+#define WM8960_REG_ADD_CTRL4  0x30
+#define WM8960_REG_CLASS_D1   0x31
 
 static i2c_master_dev_handle_t s_dev = NULL;
 
@@ -56,30 +58,31 @@ bool wm8960_init_playback(void)
     if (!wm8960_write_reg(WM8960_REG_RESET,     0x000)) return false;
     if (!wm8960_write_reg(WM8960_REG_PWR_MGMT1, 0x1C0)) return false;
     vTaskDelay(pdMS_TO_TICKS(50));
-    if (!wm8960_write_reg(WM8960_REG_PWR_MGMT3, 0x00C)) return false;
 
-    // The Waveshare board has a fixed 24 MHz oscillator. Configure the WM8960
-    // PLL for 11.2896 MHz SYSCLK (256 * 44.1 kHz) before selecting it.
-    if (!wm8960_write_reg(WM8960_REG_PLL1,       0x037)) return false;
-    if (!wm8960_write_reg(WM8960_REG_PLL2,       0x021)) return false;
-    if (!wm8960_write_reg(WM8960_REG_PLL3,       0x161)) return false;
-    if (!wm8960_write_reg(WM8960_REG_PLL4,       0x026)) return false;
-    if (!wm8960_write_reg(WM8960_REG_PWR_MGMT2,  0x1E1)) return false;
-    vTaskDelay(pdMS_TO_TICKS(5));
-    if (!wm8960_write_reg(WM8960_REG_CLOCKING1,  0x005)) return false;
+    // Match Waveshare's playback example: the module oscillator is used
+    // directly, with no ESP32 MCLK output and no codec PLL.
+    if (!wm8960_write_reg(WM8960_REG_PWR_MGMT2,  0x1F8)) return false;
+    if (!wm8960_write_reg(WM8960_REG_PWR_MGMT3,  0x00C)) return false;
+    if (!wm8960_write_reg(WM8960_REG_CLOCKING1,  0x000)) return false;
+    if (!wm8960_write_reg(WM8960_REG_DAC_CTRL1,  0x000)) return false;
     if (!wm8960_write_reg(WM8960_REG_AUDIO_IF,  0x002)) return false;
 
-    // Route both DAC channels to the headphone mixers and start at a
-    // conservative -20 dB analogue headphone level.
+    // Configure the complete Waveshare output path. The board exposes both
+    // headphone and speaker outputs; the headphone jack is the stage-one test.
     if (!wm8960_write_reg(WM8960_REG_LDAC_VOL,  0x0FF)) return false;
     if (!wm8960_write_reg(WM8960_REG_RDAC_VOL,  0x1FF)) return false;
-    if (!wm8960_write_reg(WM8960_REG_LOUT_MIX,  0x100)) return false;
-    if (!wm8960_write_reg(WM8960_REG_ROUT_MIX,  0x100)) return false;
-    if (!wm8960_write_reg(WM8960_REG_LOUT1_VOL, 0x065)) return false;
-    if (!wm8960_write_reg(WM8960_REG_ROUT1_VOL, 0x165)) return false;
-    if (!wm8960_write_reg(WM8960_REG_DAC_CTRL1, 0x000)) return false;
+    if (!wm8960_write_reg(WM8960_REG_LOUT1_VOL, 0x16F)) return false;
+    if (!wm8960_write_reg(WM8960_REG_ROUT1_VOL, 0x16F)) return false;
+    if (!wm8960_write_reg(WM8960_REG_LOUT2_VOL, 0x17F)) return false;
+    if (!wm8960_write_reg(WM8960_REG_ROUT2_VOL, 0x17F)) return false;
+    if (!wm8960_write_reg(WM8960_REG_CLASS_D1,  0x0F7)) return false;
+    if (!wm8960_write_reg(WM8960_REG_LOUT_MIX,  0x180)) return false;
+    if (!wm8960_write_reg(WM8960_REG_ROUT_MIX,  0x180)) return false;
+    if (!wm8960_write_reg(WM8960_REG_ADD_CTRL2, 0x040)) return false;
+    if (!wm8960_write_reg(WM8960_REG_ADD_CTRL1, 0x1C3)) return false;
+    if (!wm8960_write_reg(WM8960_REG_ADD_CTRL4, 0x009)) return false;
 
-    ESP_LOGI(TAG, "playback initialized (24MHz MCLK -> PLL -> 11.2896MHz SYSCLK, "
-             "44.1kHz, 16-bit stereo, HP=-20dB)");
+    ESP_LOGI(TAG, "playback initialized (Waveshare output path, onboard MCLK, "
+             "44.1kHz, 16-bit stereo)");
     return true;
 }
