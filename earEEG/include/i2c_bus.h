@@ -11,3 +11,5 @@ bool i2c_bus_init(void);
 bool i2c_bus_add_device(uint8_t address, uint32_t speed_hz,
                         i2c_master_dev_handle_t *device);
 
+// Check that a device acknowledges its address on the shared bus.
+bool i2c_bus_probe(uint8_t address, int timeout_ms);

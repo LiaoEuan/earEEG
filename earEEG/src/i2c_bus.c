@@ -16,7 +16,7 @@ bool i2c_bus_init(void)
         .scl_io_num = PIN_I2C_SCL,
         .sda_io_num = PIN_I2C_SDA,
         .glitch_ignore_cnt = 7,
-        .flags.enable_internal_pullup = false,
+        .flags.enable_internal_pullup = true,
     };
     esp_err_t ret = i2c_new_master_bus(&bus_cfg, &s_bus);
     if (ret != ESP_OK) {
@@ -26,6 +26,19 @@ bool i2c_bus_init(void)
 
     ESP_LOGI(TAG, "shared I2C0 bus initialized (SDA=%d SCL=%d)",
              PIN_I2C_SDA, PIN_I2C_SCL);
+    return true;
+}
+
+bool i2c_bus_probe(uint8_t address, int timeout_ms)
+{
+    if (!i2c_bus_init()) return false;
+
+    esp_err_t ret = i2c_master_probe(s_bus, address, timeout_ms);
+    if (ret != ESP_OK) {
+        ESP_LOGW(TAG, "I2C device 0x%02X probe failed: %s",
+                 address, esp_err_to_name(ret));
+        return false;
+    }
     return true;
 }
 
@@ -47,4 +60,3 @@ bool i2c_bus_add_device(uint8_t address, uint32_t speed_hz,
     }
     return true;
 }
-

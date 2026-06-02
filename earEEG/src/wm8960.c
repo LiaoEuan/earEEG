@@ -8,6 +8,7 @@ static const char *TAG = "wm8960";
 
 #define WM8960_I2C_ADDR       0x1A
 #define WM8960_I2C_FREQ_HZ    100000
+#define WM8960_I2C_RETRIES    5
 
 #define WM8960_REG_LOUT1_VOL  0x02
 #define WM8960_REG_ROUT1_VOL  0x03
@@ -37,17 +38,38 @@ static bool wm8960_write_reg(uint8_t reg, uint16_t value)
         (uint8_t)((reg << 1) | ((value >> 8) & 0x01)),
         (uint8_t)(value & 0xFF),
     };
-    esp_err_t ret = i2c_master_transmit(s_dev, data, sizeof(data), 100);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "register 0x%02X write failed: %s",
-                 reg, esp_err_to_name(ret));
-        return false;
+    esp_err_t ret = ESP_FAIL;
+    for (int attempt = 1; attempt <= WM8960_I2C_RETRIES; attempt++) {
+        ret = i2c_master_transmit(s_dev, data, sizeof(data), 100);
+        if (ret == ESP_OK) return true;
+
+        ESP_LOGW(TAG, "register 0x%02X write attempt %d/%d failed: %s",
+                 reg, attempt, WM8960_I2C_RETRIES, esp_err_to_name(ret));
+        vTaskDelay(pdMS_TO_TICKS(20));
     }
-    return true;
+    ESP_LOGE(TAG, "register 0x%02X write failed after retries", reg);
+    return false;
 }
 
 bool wm8960_init_playback(void)
 {
+    vTaskDelay(pdMS_TO_TICKS(100));
+    bool detected = false;
+    for (int attempt = 1; attempt <= WM8960_I2C_RETRIES; attempt++) {
+        if (i2c_bus_probe(WM8960_I2C_ADDR, 100)) {
+            detected = true;
+            break;
+        }
+        ESP_LOGW(TAG, "codec probe attempt %d/%d failed",
+                 attempt, WM8960_I2C_RETRIES);
+        vTaskDelay(pdMS_TO_TICKS(20));
+    }
+    if (!detected) {
+        ESP_LOGE(TAG, "codec did not acknowledge I2C address 0x%02X",
+                 WM8960_I2C_ADDR);
+        return false;
+    }
+
     if (!i2c_bus_add_device(WM8960_I2C_ADDR, WM8960_I2C_FREQ_HZ, &s_dev)) {
         ESP_LOGE(TAG, "failed to attach codec to I2C bus");
         return false;
