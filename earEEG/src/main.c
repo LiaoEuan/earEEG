@@ -8,6 +8,7 @@
 #include "earEEG_config.h"
 #include "ring_buf.h"
 #include "i2s_audio.h"
+#include "wm8960.h"
 #include "uart_eeg.h"
 #include "i2c_imu.h"
 #include "wifi_ap.h"
@@ -59,6 +60,10 @@ void app_main(void)
 
     if (!i2s_audio_init()) {
         ESP_LOGE(TAG, "I2S init failed");
+        while (1) vTaskDelay(pdMS_TO_TICKS(5000));
+    }
+    if (!wm8960_init_playback()) {
+        ESP_LOGE(TAG, "WM8960 playback init failed");
         while (1) vTaskDelay(pdMS_TO_TICKS(5000));
     }
 

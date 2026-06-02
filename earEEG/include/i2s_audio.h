@@ -8,7 +8,7 @@
 extern ring_buf_t *g_rb_mic;
 extern ring_buf_t *g_rb_dnlink;
 
-// Initialize I2S0 TX (PCM5102) and I2S1 RX (INMP441).
+// Initialize I2S0 TX (WM8960) and I2S1 RX (INMP441).
 // Returns true on success.
 bool i2s_audio_init(void);
 

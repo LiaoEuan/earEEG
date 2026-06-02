@@ -206,7 +206,7 @@ bool i2s_audio_init(void)
         .slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(
                         AUDIO_BITS_PER_SAMPLE, I2S_SLOT_MODE_STEREO),
         .gpio_cfg = {
-            .mclk = I2S_GPIO_UNUSED,
+            .mclk = PIN_I2S0_MCLK,
             .bclk = PIN_I2S0_BCLK,
             .ws   = PIN_I2S0_LRCLK,
             .dout = PIN_I2S0_DIN,
