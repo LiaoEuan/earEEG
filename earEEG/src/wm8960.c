@@ -22,6 +22,10 @@ static const char *TAG = "wm8960";
 #define WM8960_REG_LOUT_MIX   0x22
 #define WM8960_REG_ROUT_MIX   0x25
 #define WM8960_REG_PWR_MGMT3  0x2F
+#define WM8960_REG_PLL1       0x34
+#define WM8960_REG_PLL2       0x35
+#define WM8960_REG_PLL3       0x36
+#define WM8960_REG_PLL4       0x37
 
 static i2c_master_dev_handle_t s_dev = NULL;
 
@@ -52,12 +56,17 @@ bool wm8960_init_playback(void)
     if (!wm8960_write_reg(WM8960_REG_RESET,     0x000)) return false;
     if (!wm8960_write_reg(WM8960_REG_PWR_MGMT1, 0x1C0)) return false;
     vTaskDelay(pdMS_TO_TICKS(50));
-    if (!wm8960_write_reg(WM8960_REG_PWR_MGMT2, 0x1E0)) return false;
     if (!wm8960_write_reg(WM8960_REG_PWR_MGMT3, 0x00C)) return false;
 
-    // ESP32 is I2S master. MCLK is 256 * 44.1 kHz; the codec uses MCLK
-    // directly, with 16-bit Philips I2S frames and no PLL.
-    if (!wm8960_write_reg(WM8960_REG_CLOCKING1, 0x000)) return false;
+    // The Waveshare board has a fixed 24 MHz oscillator. Configure the WM8960
+    // PLL for 11.2896 MHz SYSCLK (256 * 44.1 kHz) before selecting it.
+    if (!wm8960_write_reg(WM8960_REG_PLL1,       0x037)) return false;
+    if (!wm8960_write_reg(WM8960_REG_PLL2,       0x021)) return false;
+    if (!wm8960_write_reg(WM8960_REG_PLL3,       0x161)) return false;
+    if (!wm8960_write_reg(WM8960_REG_PLL4,       0x026)) return false;
+    if (!wm8960_write_reg(WM8960_REG_PWR_MGMT2,  0x1E1)) return false;
+    vTaskDelay(pdMS_TO_TICKS(5));
+    if (!wm8960_write_reg(WM8960_REG_CLOCKING1,  0x005)) return false;
     if (!wm8960_write_reg(WM8960_REG_AUDIO_IF,  0x002)) return false;
 
     // Route both DAC channels to the headphone mixers and start at a
@@ -70,6 +79,7 @@ bool wm8960_init_playback(void)
     if (!wm8960_write_reg(WM8960_REG_ROUT1_VOL, 0x165)) return false;
     if (!wm8960_write_reg(WM8960_REG_DAC_CTRL1, 0x000)) return false;
 
-    ESP_LOGI(TAG, "playback initialized (44.1kHz, 16-bit stereo, HP=-20dB)");
+    ESP_LOGI(TAG, "playback initialized (24MHz MCLK -> PLL -> 11.2896MHz SYSCLK, "
+             "44.1kHz, 16-bit stereo, HP=-20dB)");
     return true;
 }

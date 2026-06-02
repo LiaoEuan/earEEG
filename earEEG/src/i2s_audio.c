@@ -192,7 +192,7 @@ bool i2s_audio_init(void)
         return false;
     }
 
-    // ── TX channel (I2S0, PCM5102, 44.1kHz stereo) ──
+    // TX channel (I2S0, WM8960, 44.1kHz stereo)
     i2s_chan_config_t tx_chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_0, I2S_ROLE_MASTER);
     tx_chan_cfg.dma_desc_num = I2S_DMA_BUF_COUNT_TX;
     tx_chan_cfg.dma_frame_num = I2S_DMA_BUF_LEN_TX;
@@ -206,7 +206,7 @@ bool i2s_audio_init(void)
         .slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(
                         AUDIO_BITS_PER_SAMPLE, I2S_SLOT_MODE_STEREO),
         .gpio_cfg = {
-            .mclk = PIN_I2S0_MCLK,
+            .mclk = I2S_GPIO_UNUSED,
             .bclk = PIN_I2S0_BCLK,
             .ws   = PIN_I2S0_LRCLK,
             .dout = PIN_I2S0_DIN,

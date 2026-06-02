@@ -5,11 +5,10 @@
 
 /* ── GPIO pin assignments (§2.3) ────────────────────────────────── */
 
-// I2S0 TX → PCM5102
+// I2S0 TX -> WM8960 playback
 #define PIN_I2S0_BCLK   GPIO_NUM_1
 #define PIN_I2S0_LRCLK  GPIO_NUM_2
 #define PIN_I2S0_DIN    GPIO_NUM_4
-#define PIN_I2S0_MCLK   GPIO_NUM_10
 
 // I2S1 RX → INMP441
 #define PIN_I2S1_BCLK   GPIO_NUM_7
@@ -26,7 +25,7 @@
 
 /* ── Audio sample rates (§2.2) ──────────────────────────────────── */
 
-#define SAMPLE_RATE_TX      44100   // PCM5102 playback
+#define SAMPLE_RATE_TX      44100   // WM8960 playback
 #define SAMPLE_RATE_RX      16000   // INMP441 recording
 #define AUDIO_BITS_PER_SAMPLE 16
 #define TX_CHANNELS         2       // stereo
