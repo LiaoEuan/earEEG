@@ -1,4 +1,5 @@
 #include "i2c_imu.h"
+#include "i2c_bus.h"
 #include "earEEG_config.h"
 #include "esp_log.h"
 #include "esp_cpu.h"
@@ -30,7 +31,6 @@ static const char *TAG = "bno085";
 // Shared sample
 imu_sample_t g_imu_latest;
 
-static i2c_master_bus_handle_t s_bus = NULL;
 static i2c_master_dev_handle_t s_dev = NULL;
 static TaskHandle_t s_poll_task = NULL;
 static volatile bool s_running = false;
@@ -231,27 +231,8 @@ static void imu_poll_task(void *arg)
 
 bool imu_bno085_init(void)
 {
-    // Configure I2C master bus
-    i2c_master_bus_config_t bus_cfg = {
-        .clk_source = I2C_CLK_SRC_DEFAULT,
-        .i2c_port = I2C_NUM_0,
-        .scl_io_num = PIN_I2C_SCL,
-        .sda_io_num = PIN_I2C_SDA,
-        .glitch_ignore_cnt = 7,
-        .flags.enable_internal_pullup = false,
-    };
-    if (i2c_new_master_bus(&bus_cfg, &s_bus) != ESP_OK) {
-        ESP_LOGE(TAG, "i2c_new_master_bus failed");
-        return false;
-    }
-
-    i2c_device_config_t dev_cfg = {
-        .dev_addr_length = I2C_ADDR_BIT_LEN_7,
-        .device_address = BNO085_I2C_ADDR,
-        .scl_speed_hz = BNO085_I2C_FREQ_HZ,
-    };
-    if (i2c_master_bus_add_device(s_bus, &dev_cfg, &s_dev) != ESP_OK) {
-        ESP_LOGE(TAG, "i2c_master_bus_add_device failed");
+    if (!i2c_bus_add_device(BNO085_I2C_ADDR, BNO085_I2C_FREQ_HZ, &s_dev)) {
+        ESP_LOGE(TAG, "failed to attach BNO085 to shared I2C bus");
         return false;
     }
 
