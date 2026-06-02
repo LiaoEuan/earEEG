@@ -53,7 +53,7 @@ bool wm8960_init_playback(void)
     if (!wm8960_write_reg(WM8960_REG_PWR_MGMT1, 0x1C0)) return false;
     vTaskDelay(pdMS_TO_TICKS(50));
     if (!wm8960_write_reg(WM8960_REG_PWR_MGMT2, 0x1E0)) return false;
-    if (!wm8960_write_reg(WM8960_REG_PWR_MGMT3, 0x018)) return false;
+    if (!wm8960_write_reg(WM8960_REG_PWR_MGMT3, 0x00C)) return false;
 
     // ESP32 is I2S master. MCLK is 256 * 44.1 kHz; the codec uses MCLK
     // directly, with 16-bit Philips I2S frames and no PLL.
@@ -73,4 +73,3 @@ bool wm8960_init_playback(void)
     ESP_LOGI(TAG, "playback initialized (44.1kHz, 16-bit stereo, HP=-20dB)");
     return true;
 }
-
