@@ -32,6 +32,19 @@ static const char *TAG = "wm8960";
 
 static i2c_master_dev_handle_t s_dev = NULL;
 
+static bool wm8960_wait_for_ack(const char *stage)
+{
+    for (int attempt = 1; attempt <= WM8960_I2C_RETRIES; attempt++) {
+        if (i2c_bus_probe(WM8960_I2C_ADDR, 100)) return true;
+
+        ESP_LOGW(TAG, "codec %s probe attempt %d/%d failed",
+                 stage, attempt, WM8960_I2C_RETRIES);
+        vTaskDelay(pdMS_TO_TICKS(20));
+    }
+    ESP_LOGE(TAG, "codec did not acknowledge after %s", stage);
+    return false;
+}
+
 static bool wm8960_write_reg(uint8_t reg, uint16_t value)
 {
     uint8_t data[2] = {
@@ -54,21 +67,7 @@ static bool wm8960_write_reg(uint8_t reg, uint16_t value)
 bool wm8960_init_playback(void)
 {
     vTaskDelay(pdMS_TO_TICKS(100));
-    bool detected = false;
-    for (int attempt = 1; attempt <= WM8960_I2C_RETRIES; attempt++) {
-        if (i2c_bus_probe(WM8960_I2C_ADDR, 100)) {
-            detected = true;
-            break;
-        }
-        ESP_LOGW(TAG, "codec probe attempt %d/%d failed",
-                 attempt, WM8960_I2C_RETRIES);
-        vTaskDelay(pdMS_TO_TICKS(20));
-    }
-    if (!detected) {
-        ESP_LOGE(TAG, "codec did not acknowledge I2C address 0x%02X",
-                 WM8960_I2C_ADDR);
-        return false;
-    }
+    if (!wm8960_wait_for_ack("startup")) return false;
 
     if (!i2c_bus_add_device(WM8960_I2C_ADDR, WM8960_I2C_FREQ_HZ, &s_dev)) {
         ESP_LOGE(TAG, "failed to attach codec to I2C bus");
@@ -78,6 +77,8 @@ bool wm8960_init_playback(void)
     // Reset, establish VMID, then enable only the DAC, headphone drivers and
     // output mixers required by the first playback-only migration stage.
     if (!wm8960_write_reg(WM8960_REG_RESET,     0x000)) return false;
+    vTaskDelay(pdMS_TO_TICKS(100));
+    if (!wm8960_wait_for_ack("reset")) return false;
     if (!wm8960_write_reg(WM8960_REG_PWR_MGMT1, 0x1C0)) return false;
     vTaskDelay(pdMS_TO_TICKS(50));
 
