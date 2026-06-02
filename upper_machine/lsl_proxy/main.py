@@ -32,6 +32,12 @@ def main():
                         help="print periodic statistics")
     parser.add_argument("--lsl", action="store_true",
                         help="push data to LSL outlets (requires pylsl)")
+    parser.add_argument("--play", metavar="WAV",
+                        help="stream a WAV file while receiving sensor data")
+    parser.add_argument("--prefill", type=int, default=500,
+                        help="downlink pre-fill duration in ms (default: 500)")
+    parser.add_argument("--batch-ms", type=int, default=50,
+                        help="downlink audio sent per pacing cycle in ms (default: 50)")
     args = parser.parse_args()
 
     # ── Single command mode ────────────────────────────────────
@@ -54,6 +60,7 @@ def main():
     # ── TCP client ─────────────────────────────────────────────
 
     client = TCPClient(args.host, args.port)
+    audio_player = None
 
     # Statistics
     frame_count = 0
@@ -84,9 +91,12 @@ def main():
                 lsl_manager.set_origin(s.timestamp)
                 origin_set = True
 
-            lsl_manager.push_eeg(s.eeg_raw, s.active_channels, s.timestamp)
-            lsl_manager.push_audio(s.mic_samples, s.timestamp)
-            lsl_manager.push_imu(s.quat_w, s.quat_x, s.quat_y, s.quat_z, s.timestamp)
+            try:
+                lsl_manager.push_eeg(s.eeg_raw, s.active_channels, s.timestamp)
+                lsl_manager.push_audio(s.mic_samples, s.timestamp)
+                lsl_manager.push_imu(s.quat_w, s.quat_x, s.quat_y, s.quat_z, s.timestamp)
+            except Exception as e:
+                print(f"[proxy] LSL push failed: {e}", flush=True)
 
     client.on_sensor_data(on_sensor)
 
@@ -115,6 +125,12 @@ def main():
         print("[proxy] sending CMD_START_ACQ ...")
         client.start_acquisition()
 
+    if args.play:
+        from .audio_player import AudioPlayer
+        audio_player = AudioPlayer(client, args.play, prefill_ms=args.prefill,
+                                   batch_ms=args.batch_ms)
+        audio_player.start()
+
     start_time = time.time()
     last_stats_time = start_time
 
@@ -137,6 +153,8 @@ def main():
         pass
     finally:
         _shutdown()
+        if audio_player:
+            audio_player.stop()
         client.disconnect()
         if lsl_manager:
             lsl_manager.close()

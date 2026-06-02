@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>earEEG Viewer</title>
+    <link rel="stylesheet" href="/style.css">
+  </head>
+  <body>
+    <header>
+      <div>
+        <h1>earEEG Viewer</h1>
+        <p>16-channel LSL signal monitor</p>
+      </div>
+      <div class="status">
+        <span id="socketStatus" class="badge warning">WebSocket connecting</span>
+        <span id="lslStatus" class="badge warning">LSL waiting</span>
+        <span><b id="sampleRate">250</b> Hz</span>
+        <span><b id="sampleCount">0</b> samples</span>
+      </div>
+    </header>
+    <main>
+      <section class="toolbar">
+        <label>Time window
+          <select id="windowSeconds">
+            <option value="2">2 s</option>
+            <option value="5" selected>5 s</option>
+            <option value="10">10 s</option>
+          </select>
+        </label>
+        <label>Amplitude
+          <select id="amplitudeMode">
+            <option value="auto">Auto</option>
+            <option value="50000">±50k</option>
+            <option value="250000">±250k</option>
+            <option value="1000000">±1m</option>
+          </select>
+        </label>
+        <button id="pauseButton">Pause</button>
+        <span id="detail">Waiting for EEG samples</span>
+      </section>
+      <section class="plot-panel">
+        <canvas id="eegCanvas"></canvas>
+      </section>
+    </main>
+    <script src="/viewer.js"></script>
+  </body>
+</html>

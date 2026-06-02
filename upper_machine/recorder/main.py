@@ -28,7 +28,7 @@ def main():
         sys.exit(1)
 
     writer = StorageWriter(args.output, args.tag)
-    writer.open_csv("earEEG_EEG", ["timestamp"] + [f"ch{i}" for i in range(24)])
+    writer.open_csv("earEEG_EEG", ["timestamp"] + [f"ch{i}" for i in range(16)])
     writer.open_csv("earEEG_IMU", ["timestamp", "qw", "qx", "qy", "qz",
                                     "gx", "gy", "gz", "ax", "ay", "az"])
     writer.open_wav()

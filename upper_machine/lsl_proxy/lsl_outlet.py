@@ -2,21 +2,20 @@
 LSL outlet manager for earEEG data streams.
 
 Creates and manages 3 StreamOutlets:
-  earEEG_EEG    — 24 channels float32  @ 250 Hz
+  earEEG_EEG    — 16 channels float32  @ 250 Hz
   earEEG_Audio  —  1 channel  float32  @ 16000 Hz
-  earEEG_IMU    — 11 channels float32  @ 250 Hz
+  earEEG_IMU    — 10 channels float32  @ 250 Hz
 
 Timestamp mapping: ESP32 µs timestamps are mapped to LSL time
 using the offset between PC clock and ESP32 clock at the first frame.
 """
 
-import time
 from typing import Optional
 
 import numpy as np
 
 try:
-    from pylsl import StreamInfo, StreamOutlet
+    from pylsl import StreamInfo, StreamOutlet, local_clock
     HAS_PYLSL = True
 except ImportError:
     HAS_PYLSL = False
@@ -54,7 +53,7 @@ class LSLOutletManager:
     def _create_outlets(self):
         # EEG
         info_eeg = StreamInfo("earEEG_EEG", "EEG",
-                              24, 250.0, "float32",
+                              16, 250.0, "float32",
                               source_id="earEEG_esp32")
         info_eeg.desc().append_child_value("manufacturer", "earEEG")
         self._outlet_eeg = StreamOutlet(info_eeg, max_buffered=60)
@@ -68,7 +67,7 @@ class LSLOutletManager:
 
         # IMU
         info_imu = StreamInfo("earEEG_IMU", "IMU",
-                              11, 250.0, "float32",
+                              len(IMU_CHANNELS), 250.0, "float32",
                               source_id="earEEG_esp32_imu")
         info_imu.desc().append_child_value("manufacturer", "earEEG")
         ch = info_imu.desc().append_child("channels")
@@ -77,13 +76,13 @@ class LSLOutletManager:
              .append_child_value("label", name)
         self._outlet_imu = StreamOutlet(info_imu, max_buffered=60)
 
-        print("[LSL] 3 outlets created: EEG(24ch@250Hz) Audio(1ch@16kHz) IMU(11ch@250Hz)")
+        print("[LSL] 3 outlets created: EEG(16ch@250Hz) Audio(1ch@16kHz) IMU(10ch@250Hz)")
 
     # ── timestamp mapping ───────────────────────────────────────
 
     def set_origin(self, esp_ts_us: int):
         """Record offset: PC now minus ESP32 timestamp."""
-        self._esp_offset = time.time() - esp_ts_us / 1e6
+        self._esp_offset = local_clock() - esp_ts_us / 1e6
 
     def _to_lsl_time(self, esp_ts_us: int) -> float:
         """Map ESP32 µs timestamp to LSL time (seconds)."""
@@ -95,14 +94,14 @@ class LSLOutletManager:
 
     def push_eeg(self, eeg_raw: bytes, active_channels: int, esp_ts_us: int):
         """
-        Parse 24ch × 3B raw EEG data and push as float32 sample.
+        Parse up to 16ch × 3B raw EEG data and push as float32 sample.
         Zero-pads inactive channels.
         """
         if self._outlet_eeg is None:
             return
 
-        sample = np.zeros(24, dtype=np.float32)
-        for ch in range(active_channels):
+        sample = np.zeros(16, dtype=np.float32)
+        for ch in range(min(active_channels, 16)):
             off = ch * 3
             raw24 = int.from_bytes(eeg_raw[off:off + 3], byteorder='big', signed=True)
             sample[ch] = float(raw24)  # raw ADC value; optionally scale to µV later
@@ -137,7 +136,7 @@ class LSLOutletManager:
 
     def push_imu(self, quat_w: float, quat_x: float, quat_y: float, quat_z: float,
                  esp_ts_us: int):
-        """Push 11-channel IMU sample (quaternion + reserved zeros)."""
+        """Push 10-channel IMU sample (quaternion + reserved zeros)."""
         if self._outlet_imu is None:
             return
 
@@ -157,6 +156,5 @@ class LSLOutletManager:
 
 
 def pylsl_wall_time() -> float:
-    """Return LSL-compatible wall time (seconds since epoch)."""
-    from pylsl import local_clock
+    """Return the current LSL clock value."""
     return local_clock()

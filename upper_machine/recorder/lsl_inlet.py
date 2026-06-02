@@ -2,9 +2,9 @@
 LSL inlet module — subscribes to earEEG streams from lsl_proxy.
 
 Subscribed streams:
-  earEEG_EEG    — 24 channels float32  @ 250 Hz
+  earEEG_EEG    — 16 channels float32  @ 250 Hz
   earEEG_Audio  —  1 channel  float32  @ 16000 Hz
-  earEEG_IMU    — 11 channels float32  @ 250 Hz
+  earEEG_IMU    — 10 channels float32  @ 250 Hz
 """
 
 import time
@@ -26,9 +26,9 @@ class InletConfig(NamedTuple):
     channel_count: int
 
 STREAMS = [
-    InletConfig("earEEG_EEG", 24),
+    InletConfig("earEEG_EEG", 16),
     InletConfig("earEEG_Audio", 1),
-    InletConfig("earEEG_IMU", 11),
+    InletConfig("earEEG_IMU", 10),
 ]
 
 

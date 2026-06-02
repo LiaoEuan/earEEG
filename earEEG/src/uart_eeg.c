@@ -15,23 +15,33 @@ static QueueHandle_t s_uart_queue = NULL;
 static TaskHandle_t  s_parser_task = NULL;
 static volatile bool s_running = false;
 static volatile bool s_ready = false;
+static uint8_t s_board_eeg_data[8 * 3];
+static uint8_t s_daisy_eeg_data[8 * 3];
+static bool s_have_board = false;
+static bool s_have_daisy = false;
+static bool s_have_sample_number = false;
+static uint8_t s_last_sample_number = 0;
 
 static bool is_frame_footer(uint8_t value)
 {
     return value >= OPENBCI_FRAME_END_MIN && value <= OPENBCI_FRAME_END_MAX;
 }
 
-static void store_eeg_frame(const uint8_t *raw, size_t frame_size)
+static bool is_frame_header(uint8_t value)
+{
+    return value == OPENBCI_FRAME_START;
+}
+
+static void store_eeg_frame(const uint8_t *eeg_data, uint16_t num_ch)
 {
     uint8_t frame_buf[256];
-    uint16_t num_ch = (frame_size == 57) ? 16 : 8;
     uint16_t eeg_bytes = num_ch * 3;
     size_t entry_size = sizeof(num_ch) + sizeof(eeg_bytes) + eeg_bytes;
 
     size_t pos = 0;
     memcpy(frame_buf + pos, &num_ch, sizeof(num_ch)); pos += sizeof(num_ch);
     memcpy(frame_buf + pos, &eeg_bytes, sizeof(eeg_bytes)); pos += sizeof(eeg_bytes);
-    memcpy(frame_buf + pos, raw + 2, eeg_bytes);
+    memcpy(frame_buf + pos, eeg_data, eeg_bytes);
 
     if (g_rb_eeg && ring_buf_free(g_rb_eeg) >= entry_size) {
         ring_buf_write(g_rb_eeg, frame_buf, entry_size);
@@ -40,9 +50,63 @@ static void store_eeg_frame(const uint8_t *raw, size_t frame_size)
     }
 }
 
+static int32_t decode_eeg_value(const uint8_t *data)
+{
+    int32_t value = ((int32_t)data[0] << 16) |
+                    ((int32_t)data[1] << 8) |
+                    data[2];
+    if ((value & 0x00800000) != 0) {
+        value |= (int32_t)0xFF000000;
+    }
+    return value;
+}
+
+static void encode_eeg_value(uint8_t *data, int32_t value)
+{
+    data[0] = (value >> 16) & 0xFF;
+    data[1] = (value >> 8) & 0xFF;
+    data[2] = value & 0xFF;
+}
+
+static void average_eeg_values(uint8_t *out, const uint8_t *previous,
+                               const uint8_t *current)
+{
+    for (size_t ch = 0; ch < 8; ch++) {
+        int32_t a = decode_eeg_value(previous + ch * 3);
+        int32_t b = decode_eeg_value(current + ch * 3);
+        encode_eeg_value(out + ch * 3, (a + b) / 2);
+    }
+}
+
+static void store_daisy_packet(const uint8_t *raw)
+{
+    uint8_t combined[16 * 3];
+    uint8_t sample_number = raw[1];
+
+    if ((sample_number & 1) != 0) {
+        // Official Cyton+Daisy format: odd packets carry board channels 1-8.
+        if (s_have_board && s_have_daisy) {
+            average_eeg_values(combined, s_board_eeg_data, raw + 2);
+            memcpy(combined + 8 * 3, s_daisy_eeg_data, 8 * 3);
+            store_eeg_frame(combined, 16);
+        }
+        memcpy(s_board_eeg_data, raw + 2, 8 * 3);
+        s_have_board = true;
+    } else {
+        // Even packets carry Daisy channels 9-16.
+        if (s_have_board && s_have_daisy) {
+            memcpy(combined, s_board_eeg_data, 8 * 3);
+            average_eeg_values(combined + 8 * 3, s_daisy_eeg_data, raw + 2);
+            store_eeg_frame(combined, 16);
+        }
+        memcpy(s_daisy_eeg_data, raw + 2, 8 * 3);
+        s_have_daisy = true;
+    }
+}
+
 static void parse_eeg_bytes(const uint8_t *data, size_t len)
 {
-    static uint8_t stream_buf[OPENBCI_FRAME_MAX * 2];
+    static uint8_t stream_buf[OPENBCI_FRAME_SIZE * 2];
     static size_t stream_len = 0;
 
     for (size_t i = 0; i < len; i++) {
@@ -52,34 +116,39 @@ static void parse_eeg_bytes(const uint8_t *data, size_t len)
         stream_buf[stream_len++] = data[i];
 
         while (stream_len > 0) {
-            if (stream_buf[0] != OPENBCI_FRAME_START) {
+            if (!is_frame_header(stream_buf[0])) {
                 memmove(stream_buf, stream_buf + 1, --stream_len);
                 continue;
             }
-            if (stream_len < 33) break;
+            if (stream_len < OPENBCI_FRAME_SIZE) break;
 
-            size_t frame_size = 0;
-            if (is_frame_footer(stream_buf[32])) {
-                frame_size = 33;
-            } else if (stream_len < 57) {
-                break;
-            } else if (is_frame_footer(stream_buf[56])) {
-                frame_size = 57;
-            } else {
+            if (!is_frame_footer(stream_buf[OPENBCI_FRAME_SIZE - 1])) {
                 memmove(stream_buf, stream_buf + 1, --stream_len);
                 continue;
             }
 
-            store_eeg_frame(stream_buf, frame_size);
-            stream_len -= frame_size;
-            memmove(stream_buf, stream_buf + frame_size, stream_len);
+            uint8_t sample_number = stream_buf[1];
+            if (s_have_sample_number &&
+                sample_number != (uint8_t)(s_last_sample_number + 1)) {
+                s_have_sample_number = false;
+                s_have_board = false;
+                s_have_daisy = false;
+                memmove(stream_buf, stream_buf + 1, --stream_len);
+                continue;
+            }
+
+            store_daisy_packet(stream_buf);
+            s_last_sample_number = sample_number;
+            s_have_sample_number = true;
+            stream_len -= OPENBCI_FRAME_SIZE;
+            memmove(stream_buf, stream_buf + OPENBCI_FRAME_SIZE, stream_len);
         }
     }
 }
 
 static void eeg_parser_task(void *arg)
 {
-    uint8_t raw[OPENBCI_FRAME_MAX];
+    uint8_t raw[OPENBCI_FRAME_SIZE];
 
     while (s_running) {
         uart_event_t event;
@@ -157,6 +226,9 @@ bool uart_eeg_is_ready(void)
 void uart_eeg_start_acq(void)
 {
     if (!s_ready) return;
+    s_have_board = false;
+    s_have_daisy = false;
+    s_have_sample_number = false;
     const char *cmd = "b";
     uart_write_bytes(OPENBCI_UART_NUM, cmd, strlen(cmd));
 

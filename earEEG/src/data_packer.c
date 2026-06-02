@@ -27,10 +27,17 @@ static void packer_task_fn(void *arg)
 {
     uint16_t seq_id = 0;
     uint8_t  frame_buf[512];  // generous size for one frame
+    uint8_t  last_eeg_data[48] = {0};
+    uint16_t last_eeg_ch = 0;
+    uint16_t last_eeg_sz = 0;
     TickType_t last_wake = xTaskGetTickCount();
 
     while (s_running) {
         if (!g_acq_running || !tcp_is_connected()) {
+            if (!g_acq_running) {
+                last_eeg_ch = 0;
+                last_eeg_sz = 0;
+            }
             vTaskDelay(pdMS_TO_TICKS(PACKET_INTERVAL_MS));
             last_wake = xTaskGetTickCount();
             continue;
@@ -54,24 +61,31 @@ static void packer_task_fn(void *arg)
         // Zero-fill EEG data (72 bytes)
         memset(frame_buf + PAYLOAD_OFFSET + 4, 0, 72);
 
-    // Try to read latest EEG frame from ring buffer
-    uint16_t eeg_ch = 0;
-    uint16_t eeg_sz = 0;
+    // Try to read the next EEG frame from the ring buffer. If UART and
+    // packer scheduling briefly drift apart, reuse the latest complete frame
+    // instead of injecting an artificial all-zero sample.
+    uint16_t eeg_ch = last_eeg_ch;
+    uint16_t eeg_sz = last_eeg_sz;
     if (g_rb_eeg && ring_buf_avail(g_rb_eeg) >= 4) {
         uint8_t peek[4];
         ring_buf_peek(g_rb_eeg, peek, 4);
-        eeg_ch = peek[0] | (uint16_t)(peek[1] << 8);
-        eeg_sz = peek[2] | (uint16_t)(peek[3] << 8);
+        uint16_t next_eeg_sz = peek[2] | (uint16_t)(peek[3] << 8);
 
-        size_t entry_sz = 4 + eeg_sz;
-        if (ring_buf_avail(g_rb_eeg) >= entry_sz && eeg_sz <= 48) {
+        size_t entry_sz = 4 + next_eeg_sz;
+        if (ring_buf_avail(g_rb_eeg) >= entry_sz && next_eeg_sz <= 48) {
             uint8_t entry[52]; // max: 4 header + 48 eeg (16ch × 3B)
             ring_buf_read(g_rb_eeg, entry, entry_sz);
             eeg_ch = entry[0] | (uint16_t)(entry[1] << 8);
             eeg_sz = entry[2] | (uint16_t)(entry[3] << 8);
             memcpy(frame_buf + PAYLOAD_OFFSET + 4, entry + 4, eeg_sz);
+            memcpy(last_eeg_data, entry + 4, eeg_sz);
+            last_eeg_ch = eeg_ch;
+            last_eeg_sz = eeg_sz;
         }
     }
+        if (eeg_sz > 0) {
+            memcpy(frame_buf + PAYLOAD_OFFSET + 4, last_eeg_data, eeg_sz);
+        }
         frame_buf[PAYLOAD_OFFSET + 2] = (uint8_t)eeg_ch; // active channels
 
         // MIC PAYLOAD

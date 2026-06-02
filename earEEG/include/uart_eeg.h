@@ -7,13 +7,14 @@
 
 extern ring_buf_t *g_rb_eeg;
 
-// EEG frame header byte from OpenBCI
+// OpenBCI Cyton sample frame header.
 #define OPENBCI_FRAME_START  0xA0
 #define OPENBCI_FRAME_END_MIN 0xC0
 #define OPENBCI_FRAME_END_MAX 0xCF
 
-// Max raw bytes per OpenBCI frame (16ch + Daisy)
-#define OPENBCI_FRAME_MAX    57
+// Cyton and Cyton+Daisy both use 33-byte wire frames. In Daisy mode the
+// board alternates 8-channel halves between odd and even sample numbers.
+#define OPENBCI_FRAME_SIZE   33
 
 // Initialize OpenBCI UART and start parser task.
 bool uart_eeg_init(void);

@@ -9,9 +9,10 @@ from typing import Optional, Callable
 
 from upper_machine.common.protocol import (
     FrameParser, ParsedFrame, SensorData,
-    build_command, parse_sensor_data,
-    TYPE_SENSOR, TYPE_ACK,
+    build_command, build_frame, parse_sensor_data,
+    TYPE_SENSOR, TYPE_DNLINK_AUDIO, TYPE_ACK,
     CMD_START_ACQ, CMD_STOP_ACQ,
+    CMD_IMPEDANCE_CTRL, CMD_IMPEDANCE_STOP,
 )
 
 
@@ -84,6 +85,15 @@ class TCPClient:
         """Build and send a CMD frame (TYPE=0x03)."""
         return self.send_raw(build_command(cmd_id, data))
 
+    def send_audio(self, pcm: bytes, channels: int = 2) -> bool:
+        """Send one downlink PCM chunk (16-bit interleaved samples)."""
+        if channels <= 0:
+            raise ValueError("channel count must be positive")
+        if len(pcm) % (channels * 2) != 0:
+            raise ValueError("PCM chunk is not aligned to 16-bit channel samples")
+        payload = bytes([channels]) + pcm
+        return self.send_raw(build_frame(TYPE_DNLINK_AUDIO, 0, payload))
+
     def start_acquisition(self):
         """Send CMD_START_ACQ (0x01)."""
         return self.send_command(CMD_START_ACQ)
@@ -91,6 +101,14 @@ class TCPClient:
     def stop_acquisition(self):
         """Send CMD_STOP_ACQ (0x02)."""
         return self.send_command(CMD_STOP_ACQ)
+
+    def set_impedance(self, openbci_command: str):
+        """Forward an OpenBCI lead-off impedance ASCII command."""
+        return self.send_command(CMD_IMPEDANCE_CTRL, openbci_command.encode("ascii"))
+
+    def stop_impedance(self):
+        """Disable lead-off impedance injection on all main-board channels."""
+        return self.send_command(CMD_IMPEDANCE_STOP)
 
     # ── callbacks ───────────────────────────────────────────────
 
