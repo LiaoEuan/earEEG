@@ -199,8 +199,8 @@ bool i2s_audio_init(void)
             .din  = PIN_I2S1_DOUT,
             .invert_flags = {
                 .mclk_inv = false,
-                .bclk_inv = AUDIO_TX_BCLK_INVERT,
-                .ws_inv   = AUDIO_TX_WS_INVERT,
+                .bclk_inv = false,
+                .ws_inv   = false,
             },
         },
     };
@@ -230,8 +230,8 @@ bool i2s_audio_init(void)
             .din  = I2S_GPIO_UNUSED,
             .invert_flags = {
                 .mclk_inv = false,
-                .bclk_inv = false,
-                .ws_inv   = false,
+                .bclk_inv = AUDIO_TX_BCLK_INVERT,
+                .ws_inv   = AUDIO_TX_WS_INVERT,
             },
         },
     };
