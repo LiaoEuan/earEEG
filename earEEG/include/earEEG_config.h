@@ -37,7 +37,7 @@
 //   2 = force the right I2S slot to silence
 //   3 = force both I2S slots to silence
 //   4 = force left slot to silence, copy original left samples to right slot
-#define AUDIO_TX_DIAG_MODE 0
+#define AUDIO_TX_DIAG_MODE 1
 
 // Diagnostic: invert the TX word-select line to test WM8960 slot alignment.
 #define AUDIO_TX_WS_INVERT 0
