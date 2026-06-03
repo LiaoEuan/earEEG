@@ -95,7 +95,7 @@ bool wm8960_init_playback(void)
     if (!wm8960_write_reg(WM8960_REG_LDAC_VOL,  0x0FF)) return false;
     if (!wm8960_write_reg(WM8960_REG_RDAC_VOL,  0x1FF)) return false;
     if (!wm8960_write_reg(WM8960_REG_LOUT1_VOL, 0x160)) return false;
-    if (!wm8960_write_reg(WM8960_REG_ROUT1_VOL, 0x158)) return false;
+    if (!wm8960_write_reg(WM8960_REG_ROUT1_VOL, 0x160)) return false;
     if (!wm8960_write_reg(WM8960_REG_LOUT2_VOL, 0x000)) return false;
     if (!wm8960_write_reg(WM8960_REG_ROUT2_VOL, 0x000)) return false;
     if (!wm8960_write_reg(WM8960_REG_CLASS_D1,  0x000)) return false;
