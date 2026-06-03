@@ -36,7 +36,8 @@
 //   1 = duplicate left samples into the right I2S slot
 //   2 = force the right I2S slot to silence
 //   3 = force both I2S slots to silence
-#define AUDIO_TX_DIAG_MODE 3
+//   4 = force left slot to silence, copy original left samples to right slot
+#define AUDIO_TX_DIAG_MODE 4
 
 /* ── EEG ────────────────────────────────────────────────────────── */
 

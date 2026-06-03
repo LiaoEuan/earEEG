@@ -150,6 +150,12 @@ static void i2s_tx_task_fn(void *arg)
             }
 #elif AUDIO_TX_DIAG_MODE == 3
             memset(tx_buf, 0, buf_bytes);
+#elif AUDIO_TX_DIAG_MODE == 4
+            for (size_t i = 0; i < I2S_DMA_BUF_LEN_TX; i++) {
+                int16_t left = tx_buf[i * 2];
+                tx_buf[i * 2] = 0;
+                tx_buf[i * 2 + 1] = left;
+            }
 #endif
         } else {
             if (playing) {
@@ -241,6 +247,8 @@ bool i2s_audio_init(void)
     ESP_LOGW(TAG, "diagnostic mode: forcing right TX channel to silence");
 #elif AUDIO_TX_DIAG_MODE == 3
     ESP_LOGW(TAG, "diagnostic mode: forcing both TX channels to silence");
+#elif AUDIO_TX_DIAG_MODE == 4
+    ESP_LOGW(TAG, "diagnostic mode: moving left TX audio to right channel only");
 #endif
     return true;
 }
