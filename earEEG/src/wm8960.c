@@ -100,9 +100,9 @@ bool wm8960_init_playback(void)
     if (!wm8960_write_reg(WM8960_REG_ROUT2_VOL, 0x000)) return false;
     if (!wm8960_write_reg(WM8960_REG_CLASS_D1,  0x000)) return false;
     if (!wm8960_write_reg(WM8960_REG_LOUT_MIX,  0x100)) return false;
-    if (!wm8960_write_reg(WM8960_REG_ROUT_MIX,  0x180)) return false;
+    if (!wm8960_write_reg(WM8960_REG_ROUT_MIX,  0x100)) return false;
 
     ESP_LOGI(TAG, "playback initialized (headphone-only, onboard MCLK, "
-             "44.1kHz, 16-bit stereo, right HP enabled, right PCM muted)");
+             "44.1kHz, 16-bit stereo, DAC-only output mixers)");
     return true;
 }
