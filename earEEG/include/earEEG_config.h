@@ -35,7 +35,8 @@
 //   0 = normal stereo
 //   1 = duplicate left samples into the right I2S slot
 //   2 = force the right I2S slot to silence
-#define AUDIO_TX_DIAG_MODE 2
+//   3 = force both I2S slots to silence
+#define AUDIO_TX_DIAG_MODE 3
 
 /* ── EEG ────────────────────────────────────────────────────────── */
 
