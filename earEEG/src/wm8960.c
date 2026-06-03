@@ -84,7 +84,7 @@ bool wm8960_init_playback(void)
 
     // Match Waveshare's playback example: the module oscillator is used
     // directly, with no ESP32 MCLK output and no codec PLL.
-    if (!wm8960_write_reg(WM8960_REG_PWR_MGMT2,  0x1E0)) return false;
+    if (!wm8960_write_reg(WM8960_REG_PWR_MGMT2,  0x160)) return false;
     if (!wm8960_write_reg(WM8960_REG_PWR_MGMT3,  0x00C)) return false;
     if (!wm8960_write_reg(WM8960_REG_CLOCKING1,  0x000)) return false;
     if (!wm8960_write_reg(WM8960_REG_DAC_CTRL1,  0x000)) return false;
@@ -95,14 +95,14 @@ bool wm8960_init_playback(void)
     if (!wm8960_write_reg(WM8960_REG_LDAC_VOL,  0x0FF)) return false;
     if (!wm8960_write_reg(WM8960_REG_RDAC_VOL,  0x1FF)) return false;
     if (!wm8960_write_reg(WM8960_REG_LOUT1_VOL, 0x160)) return false;
-    if (!wm8960_write_reg(WM8960_REG_ROUT1_VOL, 0x160)) return false;
+    if (!wm8960_write_reg(WM8960_REG_ROUT1_VOL, 0x000)) return false;
     if (!wm8960_write_reg(WM8960_REG_LOUT2_VOL, 0x000)) return false;
     if (!wm8960_write_reg(WM8960_REG_ROUT2_VOL, 0x000)) return false;
     if (!wm8960_write_reg(WM8960_REG_CLASS_D1,  0x000)) return false;
     if (!wm8960_write_reg(WM8960_REG_LOUT_MIX,  0x100)) return false;
-    if (!wm8960_write_reg(WM8960_REG_ROUT_MIX,  0x100)) return false;
+    if (!wm8960_write_reg(WM8960_REG_ROUT_MIX,  0x000)) return false;
 
     ESP_LOGI(TAG, "playback initialized (headphone-only, onboard MCLK, "
-             "44.1kHz, 16-bit stereo, HP=-15dB)");
+             "44.1kHz, 16-bit stereo, right HP disabled)");
     return true;
 }
