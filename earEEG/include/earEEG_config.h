@@ -40,7 +40,10 @@
 #define AUDIO_TX_DIAG_MODE 4
 
 // Diagnostic: invert the TX word-select line to test WM8960 slot alignment.
-#define AUDIO_TX_WS_INVERT 1
+#define AUDIO_TX_WS_INVERT 0
+
+// Diagnostic: invert the TX bit clock line to test WM8960 sampling edge.
+#define AUDIO_TX_BCLK_INVERT 1
 
 /* ── EEG ────────────────────────────────────────────────────────── */
 

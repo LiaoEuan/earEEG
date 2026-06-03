@@ -199,7 +199,7 @@ bool i2s_audio_init(void)
             .din  = PIN_I2S1_DOUT,
             .invert_flags = {
                 .mclk_inv = false,
-                .bclk_inv = false,
+                .bclk_inv = AUDIO_TX_BCLK_INVERT,
                 .ws_inv   = AUDIO_TX_WS_INVERT,
             },
         },
@@ -252,6 +252,9 @@ bool i2s_audio_init(void)
 #endif
 #if AUDIO_TX_WS_INVERT
     ESP_LOGW(TAG, "diagnostic mode: TX WS inverted");
+#endif
+#if AUDIO_TX_BCLK_INVERT
+    ESP_LOGW(TAG, "diagnostic mode: TX BCLK inverted");
 #endif
     return true;
 }
