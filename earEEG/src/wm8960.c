@@ -93,14 +93,14 @@ bool wm8960_init_playback(void)
     // Stage one only validates the headphone jack. Keep the speaker/Class-D
     // path and input side tone path off; they add avoidable hiss on headphones.
     if (!wm8960_write_reg(WM8960_REG_LDAC_VOL,  0x0FF)) return false;
-    if (!wm8960_write_reg(WM8960_REG_RDAC_VOL,  0x1FF)) return false;
+    if (!wm8960_write_reg(WM8960_REG_RDAC_VOL,  0x1C0)) return false;
     if (!wm8960_write_reg(WM8960_REG_LOUT1_VOL, 0x160)) return false;
-    if (!wm8960_write_reg(WM8960_REG_ROUT1_VOL, 0x160)) return false;
+    if (!wm8960_write_reg(WM8960_REG_ROUT1_VOL, 0x150)) return false;
     if (!wm8960_write_reg(WM8960_REG_LOUT2_VOL, 0x000)) return false;
     if (!wm8960_write_reg(WM8960_REG_ROUT2_VOL, 0x000)) return false;
     if (!wm8960_write_reg(WM8960_REG_CLASS_D1,  0x000)) return false;
     if (!wm8960_write_reg(WM8960_REG_LOUT_MIX,  0x100)) return false;
-    if (!wm8960_write_reg(WM8960_REG_ROUT_MIX,  0x100)) return false;
+    if (!wm8960_write_reg(WM8960_REG_ROUT_MIX,  0x180)) return false;
 
     ESP_LOGI(TAG, "playback initialized (headphone-only, onboard MCLK, "
              "44.1kHz, 16-bit stereo, right HP enabled, right PCM muted)");
