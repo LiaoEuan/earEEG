@@ -31,6 +31,10 @@
 #define TX_CHANNELS         2       // stereo
 #define RX_CHANNELS         1       // mono (I2S frame still has 2 slots)
 
+// Diagnostic: duplicate left playback samples into the right I2S slot.
+// This isolates right-channel codec/headphone hardware from PC/WAV stereo data.
+#define AUDIO_TX_DUP_LEFT_TO_RIGHT 1
+
 /* ── EEG ────────────────────────────────────────────────────────── */
 
 #define EEG_SAMPLE_RATE     250     // Hz
