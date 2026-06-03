@@ -31,9 +31,11 @@
 #define TX_CHANNELS         2       // stereo
 #define RX_CHANNELS         1       // mono (I2S frame still has 2 slots)
 
-// Diagnostic: duplicate left playback samples into the right I2S slot.
-// This isolates right-channel codec/headphone hardware from PC/WAV stereo data.
-#define AUDIO_TX_DUP_LEFT_TO_RIGHT 1
+// Playback diagnostic modes:
+//   0 = normal stereo
+//   1 = duplicate left samples into the right I2S slot
+//   2 = force the right I2S slot to silence
+#define AUDIO_TX_DIAG_MODE 2
 
 /* ── EEG ────────────────────────────────────────────────────────── */
 

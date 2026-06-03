@@ -140,9 +140,13 @@ static void i2s_tx_task_fn(void *arg)
 
         if (playing && avail >= buf_bytes) {
             ring_buf_read(g_rb_dnlink, (uint8_t*)tx_buf, buf_bytes);
-#if AUDIO_TX_DUP_LEFT_TO_RIGHT
+#if AUDIO_TX_DIAG_MODE == 1
             for (size_t i = 0; i < I2S_DMA_BUF_LEN_TX; i++) {
                 tx_buf[i * 2 + 1] = tx_buf[i * 2];
+            }
+#elif AUDIO_TX_DIAG_MODE == 2
+            for (size_t i = 0; i < I2S_DMA_BUF_LEN_TX; i++) {
+                tx_buf[i * 2 + 1] = 0;
             }
 #endif
         } else {
@@ -229,8 +233,10 @@ bool i2s_audio_init(void)
     }
 
     ESP_LOGI(TAG, "I2S init OK (RX=%dHz TX=%dHz)", SAMPLE_RATE_RX, SAMPLE_RATE_TX);
-#if AUDIO_TX_DUP_LEFT_TO_RIGHT
+#if AUDIO_TX_DIAG_MODE == 1
     ESP_LOGW(TAG, "diagnostic mode: duplicating left TX channel to right");
+#elif AUDIO_TX_DIAG_MODE == 2
+    ESP_LOGW(TAG, "diagnostic mode: forcing right TX channel to silence");
 #endif
     return true;
 }
