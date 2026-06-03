@@ -39,6 +39,9 @@
 //   4 = force left slot to silence, copy original left samples to right slot
 #define AUDIO_TX_DIAG_MODE 4
 
+// Diagnostic: invert the TX word-select line to test WM8960 slot alignment.
+#define AUDIO_TX_WS_INVERT 1
+
 /* ── EEG ────────────────────────────────────────────────────────── */
 
 #define EEG_SAMPLE_RATE     250     // Hz

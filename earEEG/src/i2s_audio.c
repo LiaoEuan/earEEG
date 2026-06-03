@@ -200,7 +200,7 @@ bool i2s_audio_init(void)
             .invert_flags = {
                 .mclk_inv = false,
                 .bclk_inv = false,
-                .ws_inv   = false,
+                .ws_inv   = AUDIO_TX_WS_INVERT,
             },
         },
     };
@@ -249,6 +249,9 @@ bool i2s_audio_init(void)
     ESP_LOGW(TAG, "diagnostic mode: forcing both TX channels to silence");
 #elif AUDIO_TX_DIAG_MODE == 4
     ESP_LOGW(TAG, "diagnostic mode: moving left TX audio to right channel only");
+#endif
+#if AUDIO_TX_WS_INVERT
+    ESP_LOGW(TAG, "diagnostic mode: TX WS inverted");
 #endif
     return true;
 }
