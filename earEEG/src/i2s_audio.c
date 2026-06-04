@@ -24,7 +24,7 @@ static TaskHandle_t s_tx_task_handle = NULL;
 
 static volatile bool s_running = false;
 
-static bool write_tx_block(const int16_t *samples, size_t len,
+static bool write_tx_block(const void *samples, size_t len,
                            unsigned *timeout_count)
 {
     size_t total = 0;
@@ -104,8 +104,10 @@ static void i2s_rx_task_fn(void *arg)
 
 static void i2s_tx_task_fn(void *arg)
 {
-    int16_t tx_buf[I2S_DMA_BUF_LEN_TX * TX_CHANNELS];
-    const size_t buf_bytes = sizeof(tx_buf);
+    static int16_t pcm_buf[I2S_DMA_BUF_LEN_TX * TX_CHANNELS];
+    static int32_t i2s_buf[I2S_DMA_BUF_LEN_TX * TX_CHANNELS];
+    const size_t pcm_bytes = sizeof(pcm_buf);
+    const size_t i2s_bytes = sizeof(i2s_buf);
     const size_t start_watermark =
         (SAMPLE_RATE_TX * TX_CHANNELS * sizeof(int16_t) *
          DNLINK_START_WATERMARK_MS) / 1000;
@@ -115,9 +117,9 @@ static void i2s_tx_task_fn(void *arg)
     unsigned write_timeouts = 0;
 
     // Pre-fill first DMA buffer with silence
-    memset(tx_buf, 0, buf_bytes);
+    memset(i2s_buf, 0, i2s_bytes);
     size_t written = 0;
-    i2s_channel_write(s_tx_chan, tx_buf, buf_bytes, &written, portMAX_DELAY);
+    i2s_channel_write(s_tx_chan, i2s_buf, i2s_bytes, &written, portMAX_DELAY);
 
     while (s_running) {
         size_t avail = g_rb_dnlink ? ring_buf_avail(g_rb_dnlink) : 0;
@@ -125,7 +127,7 @@ static void i2s_tx_task_fn(void *arg)
         // First start: wait for the full start_watermark.
         // Recovery after underrun: only wait for one DMA block so the gap is
         // as short as possible (~6 ms instead of 300 ms).
-        const size_t needed = (!playing && had_underrun) ? buf_bytes : start_watermark;
+        const size_t needed = (!playing && had_underrun) ? pcm_bytes : start_watermark;
 
         if (!playing && avail >= needed) {
             playing = true;
@@ -138,25 +140,28 @@ static void i2s_tx_task_fn(void *arg)
             }
         }
 
-        if (playing && avail >= buf_bytes) {
-            ring_buf_read(g_rb_dnlink, (uint8_t*)tx_buf, buf_bytes);
+        if (playing && avail >= pcm_bytes) {
+            ring_buf_read(g_rb_dnlink, (uint8_t*)pcm_buf, pcm_bytes);
 #if AUDIO_TX_DIAG_MODE == 1
             for (size_t i = 0; i < I2S_DMA_BUF_LEN_TX; i++) {
-                tx_buf[i * 2 + 1] = tx_buf[i * 2];
+                pcm_buf[i * 2 + 1] = pcm_buf[i * 2];
             }
 #elif AUDIO_TX_DIAG_MODE == 2
             for (size_t i = 0; i < I2S_DMA_BUF_LEN_TX; i++) {
-                tx_buf[i * 2 + 1] = 0;
+                pcm_buf[i * 2 + 1] = 0;
             }
 #elif AUDIO_TX_DIAG_MODE == 3
-            memset(tx_buf, 0, buf_bytes);
+            memset(pcm_buf, 0, pcm_bytes);
 #elif AUDIO_TX_DIAG_MODE == 4
             for (size_t i = 0; i < I2S_DMA_BUF_LEN_TX; i++) {
-                int16_t left = tx_buf[i * 2];
-                tx_buf[i * 2] = 0;
-                tx_buf[i * 2 + 1] = left;
+                int16_t left = pcm_buf[i * 2];
+                pcm_buf[i * 2] = 0;
+                pcm_buf[i * 2 + 1] = left;
             }
 #endif
+            for (size_t i = 0; i < I2S_DMA_BUF_LEN_TX * TX_CHANNELS; i++) {
+                i2s_buf[i] = ((int32_t)pcm_buf[i]) << 16;
+            }
         } else {
             if (playing) {
                 playing = false;
@@ -164,10 +169,10 @@ static void i2s_tx_task_fn(void *arg)
                 underruns++;
                 ESP_LOGW(TAG, "downlink underrun #%u, rebuffering", underruns);
             }
-            memset(tx_buf, 0, buf_bytes);
+            memset(i2s_buf, 0, i2s_bytes);
         }
 
-        if (!write_tx_block(tx_buf, buf_bytes, &write_timeouts)) {
+        if (!write_tx_block(i2s_buf, i2s_bytes, &write_timeouts)) {
             break;
         }
     }
@@ -221,7 +226,7 @@ bool i2s_audio_init(void)
     i2s_std_config_t tx_std_cfg = {
         .clk_cfg  = I2S_STD_CLK_DEFAULT_CONFIG(SAMPLE_RATE_TX),
         .slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(
-                        AUDIO_BITS_PER_SAMPLE, I2S_SLOT_MODE_STEREO),
+                        I2S_DATA_BIT_WIDTH_32BIT, I2S_SLOT_MODE_STEREO),
         .gpio_cfg = {
             .mclk = I2S_GPIO_UNUSED,
             .bclk = PIN_I2S0_BCLK,
@@ -273,7 +278,7 @@ void i2s_audio_start(void)
 
     BaseType_t rx_ok = xTaskCreatePinnedToCore(i2s_rx_task_fn, "i2s_rx", 3072,
                                                NULL, PRIO_I2S_RX, &s_rx_task_handle, 1);
-    BaseType_t tx_ok = xTaskCreatePinnedToCore(i2s_tx_task_fn, "i2s_tx", 3072,
+    BaseType_t tx_ok = xTaskCreatePinnedToCore(i2s_tx_task_fn, "i2s_tx", 4096,
                                                NULL, PRIO_I2S_TX, &s_tx_task_handle, 1);
     if (rx_ok != pdPASS || tx_ok != pdPASS) {
         ESP_LOGE(TAG, "failed to create I2S tasks");

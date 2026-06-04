@@ -88,12 +88,12 @@ bool wm8960_init_playback(void)
     if (!wm8960_write_reg(WM8960_REG_PWR_MGMT3,  0x00C)) return false;
     if (!wm8960_write_reg(WM8960_REG_CLOCKING1,  0x000)) return false;
     if (!wm8960_write_reg(WM8960_REG_DAC_CTRL1,  0x000)) return false;
-    if (!wm8960_write_reg(WM8960_REG_AUDIO_IF,  0x002)) return false;
+    if (!wm8960_write_reg(WM8960_REG_AUDIO_IF,  0x00E)) return false;
 
     // Stage one only validates the headphone jack. Keep the speaker/Class-D
     // path and input side tone path off; they add avoidable hiss on headphones.
-    if (!wm8960_write_reg(WM8960_REG_LDAC_VOL,  0x0FF)) return false;
-    if (!wm8960_write_reg(WM8960_REG_RDAC_VOL,  0x0FF)) return false;
+    if (!wm8960_write_reg(WM8960_REG_LDAC_VOL,  0x1FF)) return false;
+    if (!wm8960_write_reg(WM8960_REG_RDAC_VOL,  0x1FF)) return false;
     if (!wm8960_write_reg(WM8960_REG_LOUT1_VOL, 0x160)) return false;
     if (!wm8960_write_reg(WM8960_REG_ROUT1_VOL, 0x160)) return false;
     if (!wm8960_write_reg(WM8960_REG_LOUT2_VOL, 0x000)) return false;
@@ -104,6 +104,6 @@ bool wm8960_init_playback(void)
     if (!wm8960_write_reg(WM8960_REG_PWR_MGMT1, 0x0C0)) return false;
 
     ESP_LOGI(TAG, "playback initialized (headphone-only, onboard MCLK, "
-             "44.1kHz, 16-bit stereo, DAC-only output mixers)");
+             "44.1kHz, 32-bit I2S word, DAC-only output mixers)");
     return true;
 }
