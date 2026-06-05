@@ -81,6 +81,15 @@
         <span id="impedanceStatus" class="badge warning">Impedance idle</span>
       </section>
       <section id="impedanceGrid" class="impedance-grid"></section>
+      <section class="recording-toolbar">
+        <label>Record tag
+          <input id="recordingTag" type="text" placeholder="optional">
+        </label>
+        <button id="startRecordingButton">Start recording</button>
+        <button id="stopRecordingButton">Stop recording</button>
+        <span id="recordingStatus" class="badge warning">Recording idle</span>
+        <span id="recordingDetail">NPZ: eeg, mic, stimuli</span>
+      </section>
       <section class="plot-panel">
         <canvas id="eegCanvas"></canvas>
       </section>

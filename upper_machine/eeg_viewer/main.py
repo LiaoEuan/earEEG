@@ -21,6 +21,7 @@ from urllib.parse import urlparse
 from .eeg_buffer import EEGBuffer
 from .impedance_service import ImpedanceService
 from .lsl_reader import LSLReader
+from .recording_service import RecordingService
 
 
 STATIC_DIR = Path(__file__).with_name("static").resolve()
@@ -37,6 +38,7 @@ class ViewerHandler(BaseHTTPRequestHandler):
     mic_buffer: EEGBuffer
     mic_reader: LSLReader
     impedance: ImpedanceService
+    recorder: RecordingService
     proxy_url: str
 
     def do_GET(self) -> None:
@@ -50,6 +52,9 @@ class ViewerHandler(BaseHTTPRequestHandler):
             return
         if path == "/api/impedance/status":
             self._send_json(self.impedance.status())
+            return
+        if path == "/api/recording/status":
+            self._send_json(self.recorder.status())
             return
 
         if path == "/":
@@ -83,13 +88,26 @@ class ViewerHandler(BaseHTTPRequestHandler):
         elif path == "/api/acquisition/stop":
             self._proxy_post("/acquisition/stop")
         elif path == "/api/audio/play":
-            self._proxy_post("/audio/play", self._read_json_body())
+            body = self._read_json_body()
+            payload, status = self._proxy_post_payload("/audio/play", body)
+            self._send_json(payload, status)
+            if status < 400 and payload.get("ok", True):
+                self.recorder.stimulus_play(str(body.get("path", "")))
         elif path == "/api/audio/pause":
-            self._proxy_post("/audio/pause")
+            payload, status = self._proxy_post_payload("/audio/pause")
+            self._send_json(payload, status)
+            if status < 400 and payload.get("ok", True):
+                self.recorder.stimulus_pause()
         elif path == "/api/audio/resume":
-            self._proxy_post("/audio/resume")
+            payload, status = self._proxy_post_payload("/audio/resume")
+            self._send_json(payload, status)
+            if status < 400 and payload.get("ok", True):
+                self.recorder.stimulus_resume()
         elif path == "/api/audio/stop":
-            self._proxy_post("/audio/stop")
+            payload, status = self._proxy_post_payload("/audio/stop")
+            self._send_json(payload, status)
+            if status < 400 and payload.get("ok", True):
+                self.recorder.stimulus_stop()
         elif path == "/api/impedance/start":
             body = self._read_json_body()
             self._send_json(self.impedance.start(
@@ -98,6 +116,11 @@ class ViewerHandler(BaseHTTPRequestHandler):
             ))
         elif path == "/api/impedance/stop":
             self._send_json(self.impedance.stop())
+        elif path == "/api/recording/start":
+            body = self._read_json_body()
+            self._send_json(self.recorder.start(str(body.get("tag", ""))))
+        elif path == "/api/recording/stop":
+            self._send_json(self.recorder.stop())
         else:
             if path.startswith("/api/"):
                 self._send_json({"ok": False, "error": f"unknown API route: {path}"}, 404)
@@ -178,16 +201,20 @@ class ViewerHandler(BaseHTTPRequestHandler):
             self._send_json({"ok": False, "error": str(exc)}, 502)
 
     def _proxy_post(self, path: str, body: dict | None = None) -> None:
+        payload, status = self._proxy_post_payload(path, body)
+        self._send_json(payload, status)
+
+    def _proxy_post_payload(self, path: str, body: dict | None = None) -> tuple[dict, int]:
         data = json.dumps(body or {}, separators=(",", ":")).encode("utf-8")
         req = request.Request(f"{self.proxy_url}{path}", data=data, method="POST",
                               headers={"Content-Type": "application/json"})
         try:
             with request.urlopen(req, timeout=1.0) as resp:
-                self._send_json(json.loads(resp.read().decode("utf-8")), resp.status)
+                return json.loads(resp.read().decode("utf-8")), resp.status
         except error.HTTPError as exc:
-            self._send_json(_json_error(exc), exc.code)
+            return _json_error(exc), exc.code
         except OSError as exc:
-            self._send_json({"ok": False, "error": str(exc)}, 502)
+            return {"ok": False, "error": str(exc)}, 502
 
     def _handle_audio_upload(self) -> None:
         filename = _safe_upload_name(self.headers.get("X-File-Name", "audio.wav"))
@@ -269,14 +296,18 @@ def main() -> None:
     eeg_buffer = EEGBuffer(channels=CHANNELS, sample_rate=SAMPLE_RATE)
     mic_buffer = EEGBuffer(channels=MIC_CHANNELS, sample_rate=MIC_SAMPLE_RATE,
                            capacity_seconds=10)
-    eeg_reader = LSLReader(eeg_buffer, stream_name="earEEG_EEG", max_samples=128)
-    mic_reader = LSLReader(mic_buffer, stream_name="earEEG_Audio", max_samples=2048)
+    recorder = RecordingService(Path("recordings"))
+    eeg_reader = LSLReader(eeg_buffer, stream_name="earEEG_EEG", max_samples=128,
+                           on_samples=recorder.append_eeg)
+    mic_reader = LSLReader(mic_buffer, stream_name="earEEG_Audio", max_samples=2048,
+                           on_samples=recorder.append_mic)
     ViewerHandler.eeg_buffer = eeg_buffer
     ViewerHandler.eeg_reader = eeg_reader
     ViewerHandler.mic_buffer = mic_buffer
     ViewerHandler.mic_reader = mic_reader
     ViewerHandler.proxy_url = args.proxy_url.rstrip("/")
     ViewerHandler.impedance = ImpedanceService(eeg_buffer, ViewerHandler.proxy_url)
+    ViewerHandler.recorder = recorder
     server = ThreadingHTTPServer((args.host, args.port), ViewerHandler)
     eeg_reader.start()
     mic_reader.start()

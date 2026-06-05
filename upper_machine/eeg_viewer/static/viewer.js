@@ -50,6 +50,7 @@ let micAudioContext = null;
 let micPlayTime = 0;
 const micMonitorLeadSeconds = 0.08;
 let impedanceTimer = null;
+let recordingTimer = null;
 const canvas = document.getElementById("eegCanvas");
 const micCanvas = document.getElementById("micCanvas");
 
@@ -212,6 +213,47 @@ async function refreshImpedanceStatus() {
   } catch (error) {
     setBadge("impedanceStatus", `Impedance unavailable: ${error.message}`, false);
   }
+}
+
+async function refreshRecordingStatus() {
+  try {
+    const response = await fetch("/api/recording/status");
+    const status = await response.json();
+    renderRecording(status);
+  } catch (error) {
+    setBadge("recordingStatus", `Recording unavailable: ${error.message}`, false);
+  }
+}
+
+function renderRecording(status) {
+  const running = Boolean(status && status.running);
+  const elapsed = status && status.elapsedSeconds ? status.elapsedSeconds : 0;
+  const eegSamples = status && status.eegSamples ? status.eegSamples : 0;
+  const micSamples = status && status.micSamples ? status.micSamples : 0;
+  const lastPath = status && status.lastPath ? status.lastPath : "";
+  const lastError = status && status.lastError ? status.lastError : "";
+  setBadge("recordingStatus",
+    running ? `Recording ${elapsed.toFixed(1)}s` : (lastError || "Recording idle"),
+    running && !lastError);
+  document.getElementById("startRecordingButton").disabled = running;
+  document.getElementById("stopRecordingButton").disabled = !running;
+  document.getElementById("recordingTag").disabled = running;
+  document.getElementById("recordingDetail").textContent = running
+    ? `EEG ${eegSamples} samples, MIC ${micSamples} samples`
+    : (lastPath ? `Saved: ${lastPath}` : "NPZ: eeg, mic, stimuli");
+}
+
+async function startRecording() {
+  const tag = document.getElementById("recordingTag").value;
+  const result = await postJson("/api/recording/start", { tag });
+  if (result && result.ok !== false) {
+    refreshRecordingStatus();
+  }
+}
+
+async function stopRecording() {
+  await postControl("/api/recording/stop");
+  refreshRecordingStatus();
 }
 
 function renderImpedance(status) {
@@ -549,6 +591,10 @@ document.getElementById("startImpedanceButton").onclick = () =>
 document.getElementById("stopImpedanceButton").onclick = () =>
   stopImpedanceMeasurement();
 
+document.getElementById("startRecordingButton").onclick = () => startRecording();
+
+document.getElementById("stopRecordingButton").onclick = () => stopRecording();
+
 const dropZone = document.getElementById("audioDropZone");
 dropZone.ondragover = event => {
   event.preventDefault();
@@ -570,8 +616,10 @@ setControls({ connected: false, acquiring: false });
 setMicMonitorStatus();
 updateRangeOptions();
 renderImpedance({ running: false, results: [] });
+renderRecording({ running: false });
 setInterval(refreshProxyStatus, 1000);
 impedanceTimer = setInterval(refreshImpedanceStatus, 1000);
+recordingTimer = setInterval(refreshRecordingStatus, 1000);
 connect();
 draw();
 drawMic();

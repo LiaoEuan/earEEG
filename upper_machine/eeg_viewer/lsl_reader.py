@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import threading
 import time
-from typing import Optional
+from typing import Callable, Optional
 
 import numpy as np
 
@@ -19,10 +19,12 @@ except ImportError:
 
 class LSLReader:
     def __init__(self, buffer: EEGBuffer, stream_name: str = "earEEG_EEG",
-                 max_samples: int = 128):
+                 max_samples: int = 128,
+                 on_samples: Optional[Callable[[np.ndarray], None]] = None):
         self.buffer = buffer
         self.stream_name = stream_name
         self.max_samples = max_samples
+        self.on_samples = on_samples
         self.connected = False
         self.last_error = ""
         self._running = False
@@ -62,6 +64,8 @@ class LSLReader:
                                 f"expected {self.buffer.channels}"
                             )
                         self.buffer.append(samples)
+                        if self.on_samples:
+                            self.on_samples(samples.copy())
             except Exception as exc:
                 self.last_error = str(exc)
                 self.connected = False

@@ -7,7 +7,7 @@
 
 * { box-sizing: border-box; }
 body { margin: 0; }
-header, .toolbar, .audio-toolbar, .impedance-toolbar {
+header, .toolbar, .audio-toolbar, .impedance-toolbar, .recording-toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -18,14 +18,15 @@ header, .toolbar, .audio-toolbar, .impedance-toolbar {
 }
 h1 { margin: 0; font-size: 20px; letter-spacing: .08em; }
 p { margin: 3px 0 0; color: #78919a; font-size: 12px; }
-.status, .toolbar, .audio-toolbar, .impedance-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; }
+.status, .toolbar, .audio-toolbar, .impedance-toolbar, .recording-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; }
 .toolbar { justify-content: flex-start; padding: 9px 20px; font-size: 13px; }
 .audio-toolbar { justify-content: flex-start; padding: 9px 20px; font-size: 13px; }
 .impedance-toolbar { justify-content: flex-start; padding: 9px 20px; font-size: 13px; }
+.recording-toolbar { justify-content: flex-start; padding: 9px 20px; font-size: 13px; }
 .badge { padding: 4px 8px; border-radius: 12px; background: #18313a; }
 .badge.ok { color: #76dfb0; }
 .badge.warning { color: #f2bc6a; }
-select, button {
+select, button, input {
   margin-left: 5px;
   padding: 4px 8px;
   border: 1px solid #31505b;
@@ -71,8 +72,8 @@ button:disabled {
 .impedance-cell.measuring .value { color: #60a5fa; }
 #detail { color: #8ba2aa; }
 .plot-panel {
-  height: calc(100vh - 420px);
-  min-height: 340px;
+  height: calc(100vh - 470px);
+  min-height: 300px;
   padding: 10px 14px 16px;
 }
 #eegCanvas, #micCanvas {
