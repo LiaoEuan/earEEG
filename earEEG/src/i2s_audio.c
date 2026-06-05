@@ -3,6 +3,7 @@
 #include "esp_log.h"
 #include "esp_err.h"
 #include "esp_cpu.h"
+#include "esp_timer.h"
 #include "driver/i2s_std.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -60,9 +61,15 @@ static bool write_tx_block(const void *samples, size_t len,
 
 static void i2s_rx_task_fn(void *arg)
 {
-    // Buffer sized for one DMA read: I2S_DMA_BUF_LEN_RX stereo samples
-    int16_t raw_buf[I2S_DMA_BUF_LEN_RX * 2];
-    int16_t mono_buf[I2S_DMA_BUF_LEN_RX];
+    // WM8960 ADC emits 32-bit stereo words on the shared I2S0 bus.
+    static int32_t raw_buf[I2S_DMA_BUF_LEN_RX * 2];
+    static int16_t mono_buf[I2S_DMA_BUF_LEN_RX];
+    uint32_t resample_phase = 0;
+    int16_t last_sample = 0;
+    int16_t peak_abs = 0;
+    unsigned large_steps = 0;
+    unsigned mic_drops = 0;
+    int64_t last_diag_us = 0;
 
     while (s_running) {
         size_t bytes_read = 0;
@@ -76,26 +83,56 @@ static void i2s_rx_task_fn(void *arg)
         }
 
         uint64_t ts = esp_cpu_get_cycle_count();
-        size_t stereo_samples = bytes_read / 4;  // 4 bytes = L(2) + R(2)
+        size_t stereo_samples = bytes_read / (sizeof(int32_t) * 2);
         if (stereo_samples == 0) continue;
 
-        // Extract left-channel samples (INMP441 L/R pin tied to GND → data on left)
+        // Extract the left onboard mic and downsample 44.1 kHz capture to the
+        // existing 16 kHz mono mic payload rate.
+        size_t out_samples = 0;
         for (size_t i = 0; i < stereo_samples; i++) {
-            mono_buf[i] = raw_buf[i * 2];
+            resample_phase += SAMPLE_RATE_RX;
+            if (resample_phase >= SAMPLE_RATE_TX) {
+                resample_phase -= SAMPLE_RATE_TX;
+                int32_t raw = raw_buf[i * 2 + WM8960_MIC_ADC_SLOT];
+                int16_t sample = (int16_t)(raw >> WM8960_ADC_SHIFT);
+                int16_t abs_sample = sample < 0 ? -sample : sample;
+                if (abs_sample > peak_abs) peak_abs = abs_sample;
+                int32_t step = (int32_t)sample - (int32_t)last_sample;
+                if (step < 0) step = -step;
+                if (step > 12000) large_steps++;
+                last_sample = sample;
+                mono_buf[out_samples++] = sample;
+            }
         }
-        size_t mono_bytes = stereo_samples * sizeof(int16_t);
+        if (out_samples == 0) continue;
+        size_t mono_bytes = out_samples * sizeof(int16_t);
 
         // Keep the RX channel running, but only retain samples while a
         // connected client has requested acquisition.
-        if (!g_acq_running) continue;
+        if (!g_acq_running) {
+            vTaskDelay(pdMS_TO_TICKS(1));
+            continue;
+        }
 
         if (ring_buf_free(g_rb_mic) >= mono_bytes) {
             ring_buf_write(g_rb_mic, (uint8_t*)mono_buf, mono_bytes);
         } else {
-            ESP_LOGW(TAG, "mic ring buffer full, dropping %u-byte block",
-                     (unsigned)mono_bytes);
+            mic_drops++;
         }
         (void)ts; // cycle count captured but not embedded in ring buffer
+        int64_t now_us = esp_timer_get_time();
+        if (last_diag_us == 0) {
+            last_diag_us = now_us;
+        } else if (now_us - last_diag_us >= 1000000) {
+            ESP_LOGI(TAG, "mic diag: peak=%d large_steps=%u drops=%u rb=%u",
+                     peak_abs, large_steps, mic_drops,
+                     (unsigned)(g_rb_mic ? ring_buf_avail(g_rb_mic) : 0));
+            peak_abs = 0;
+            large_steps = 0;
+            mic_drops = 0;
+            last_diag_us = now_us;
+        }
+        vTaskDelay(pdMS_TO_TICKS(1));
     }
     vTaskDelete(NULL);
 }
@@ -183,43 +220,12 @@ static void i2s_tx_task_fn(void *arg)
 
 bool i2s_audio_init(void)
 {
-    // ── RX channel (I2S1, INMP441, 16kHz mono) ──
-    i2s_chan_config_t rx_chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_1, I2S_ROLE_MASTER);
-    rx_chan_cfg.dma_desc_num = I2S_DMA_BUF_COUNT_RX;
-    rx_chan_cfg.dma_frame_num = I2S_DMA_BUF_LEN_RX;
-    if (i2s_new_channel(&rx_chan_cfg, NULL, &s_rx_chan) != ESP_OK) {
-        ESP_LOGE(TAG, "i2s_new_channel RX failed");
-        return false;
-    }
-
-    i2s_std_config_t rx_std_cfg = {
-        .clk_cfg  = I2S_STD_CLK_DEFAULT_CONFIG(SAMPLE_RATE_RX),
-        .slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(
-                        AUDIO_BITS_PER_SAMPLE, I2S_SLOT_MODE_STEREO),
-        .gpio_cfg = {
-            .mclk = I2S_GPIO_UNUSED,
-            .bclk = PIN_I2S1_BCLK,
-            .ws   = PIN_I2S1_LRCLK,
-            .dout = I2S_GPIO_UNUSED,
-            .din  = PIN_I2S1_DOUT,
-            .invert_flags = {
-                .mclk_inv = false,
-                .bclk_inv = false,
-                .ws_inv   = false,
-            },
-        },
-    };
-    if (i2s_channel_init_std_mode(s_rx_chan, &rx_std_cfg) != ESP_OK) {
-        ESP_LOGE(TAG, "i2s_channel_init_std_mode RX failed");
-        return false;
-    }
-
-    // TX channel (I2S0, WM8960, 44.1kHz stereo)
+    // I2S0 full-duplex: TX drives WM8960 DAC, RX reads WM8960 ADC.
     i2s_chan_config_t tx_chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_0, I2S_ROLE_MASTER);
     tx_chan_cfg.dma_desc_num = I2S_DMA_BUF_COUNT_TX;
     tx_chan_cfg.dma_frame_num = I2S_DMA_BUF_LEN_TX;
-    if (i2s_new_channel(&tx_chan_cfg, &s_tx_chan, NULL) != ESP_OK) {
-        ESP_LOGE(TAG, "i2s_new_channel TX failed");
+    if (i2s_new_channel(&tx_chan_cfg, &s_tx_chan, &s_rx_chan) != ESP_OK) {
+        ESP_LOGE(TAG, "i2s_new_channel full-duplex failed");
         return false;
     }
 
@@ -232,7 +238,7 @@ bool i2s_audio_init(void)
             .bclk = PIN_I2S0_BCLK,
             .ws   = PIN_I2S0_LRCLK,
             .dout = PIN_I2S0_DIN,
-            .din  = I2S_GPIO_UNUSED,
+            .din  = PIN_WM8960_ADCDAT,
             .invert_flags = {
                 .mclk_inv = false,
                 .bclk_inv = AUDIO_TX_BCLK_INVERT,
@@ -240,12 +246,21 @@ bool i2s_audio_init(void)
             },
         },
     };
+    i2s_std_config_t rx_std_cfg = tx_std_cfg;
+    rx_std_cfg.gpio_cfg.dout = I2S_GPIO_UNUSED;
+    rx_std_cfg.gpio_cfg.din = PIN_WM8960_ADCDAT;
+
     if (i2s_channel_init_std_mode(s_tx_chan, &tx_std_cfg) != ESP_OK) {
         ESP_LOGE(TAG, "i2s_channel_init_std_mode TX failed");
         return false;
     }
+    if (i2s_channel_init_std_mode(s_rx_chan, &rx_std_cfg) != ESP_OK) {
+        ESP_LOGE(TAG, "i2s_channel_init_std_mode RX failed");
+        return false;
+    }
 
-    ESP_LOGI(TAG, "I2S init OK (RX=%dHz TX=%dHz)", SAMPLE_RATE_RX, SAMPLE_RATE_TX);
+    ESP_LOGI(TAG, "I2S init OK (WM8960 RX/TX=%dHz, mic downsample=%dHz)",
+             SAMPLE_RATE_TX, SAMPLE_RATE_RX);
 #if AUDIO_TX_DIAG_MODE == 1
     ESP_LOGW(TAG, "diagnostic mode: duplicating left TX channel to right");
 #elif AUDIO_TX_DIAG_MODE == 2
@@ -272,11 +287,16 @@ void i2s_audio_start(void)
         return;
     }
 
-    i2s_channel_enable(s_rx_chan);
-    i2s_channel_enable(s_tx_chan);
+    esp_err_t tx_ret = i2s_channel_enable(s_tx_chan);
+    esp_err_t rx_ret = i2s_channel_enable(s_rx_chan);
+    if (tx_ret != ESP_OK || rx_ret != ESP_OK) {
+        ESP_LOGE(TAG, "failed to enable I2S channels: tx=%s rx=%s",
+                 esp_err_to_name(tx_ret), esp_err_to_name(rx_ret));
+        return;
+    }
     s_running = true;
 
-    BaseType_t rx_ok = xTaskCreatePinnedToCore(i2s_rx_task_fn, "i2s_rx", 3072,
+    BaseType_t rx_ok = xTaskCreatePinnedToCore(i2s_rx_task_fn, "i2s_rx", 4096,
                                                NULL, PRIO_I2S_RX, &s_rx_task_handle, 1);
     BaseType_t tx_ok = xTaskCreatePinnedToCore(i2s_tx_task_fn, "i2s_tx", 4096,
                                                NULL, PRIO_I2S_TX, &s_tx_task_handle, 1);

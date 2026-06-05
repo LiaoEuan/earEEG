@@ -14,6 +14,7 @@
 #define PIN_I2S1_BCLK   GPIO_NUM_7
 #define PIN_I2S1_LRCLK  GPIO_NUM_8
 #define PIN_I2S1_DOUT   GPIO_NUM_9
+#define PIN_WM8960_ADCDAT PIN_I2S1_DOUT
 
 // I2C → BNO085
 #define PIN_I2C_SDA      GPIO_NUM_5
@@ -30,6 +31,17 @@
 #define AUDIO_BITS_PER_SAMPLE 16
 #define TX_CHANNELS         2       // stereo
 #define RX_CHANNELS         1       // mono (I2S frame still has 2 slots)
+
+// WM8960 onboard mic capture channel:
+//   0 = left ADC slot
+//   1 = right ADC slot
+#define WM8960_MIC_ADC_SLOT 0
+
+// WM8960 ADC 32-bit capture word extraction:
+//   16 = use bits 31..16
+//    8 = use bits 23..8
+//    0 = use bits 15..0
+#define WM8960_ADC_SHIFT 14
 
 // Playback diagnostic modes:
 //   0 = normal stereo
@@ -81,7 +93,7 @@
 
 #define I2S_DMA_BUF_COUNT_RX 4
 #define I2S_DMA_BUF_COUNT_TX 8
-#define I2S_DMA_BUF_LEN_RX   256   // stereo samples per DMA buffer (RX)
+#define I2S_DMA_BUF_LEN_RX   128   // stereo samples per DMA buffer (RX)
 #define I2S_DMA_BUF_LEN_TX   256   // stereo samples per DMA buffer (TX)
 #define DNLINK_START_WATERMARK_MS 300
 

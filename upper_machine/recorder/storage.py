@@ -54,7 +54,12 @@ class StorageWriter:
     def write_wav_chunk(self, audio: np.ndarray):
         if self._wav_f is None:
             return
-        int16_data = np.clip(audio * 32767, -32768, 32767).astype(np.int16)
+        # earEEG_Audio is currently published as raw int16 PCM counts carried
+        # in float32 LSL samples. Accept normalized audio too for compatibility.
+        if audio.size and np.nanmax(np.abs(audio)) > 2.0:
+            int16_data = np.clip(audio, -32768, 32767).astype(np.int16)
+        else:
+            int16_data = np.clip(audio * 32767, -32768, 32767).astype(np.int16)
         self._wav_f.write(int16_data.tobytes())
         self._wav_samples_total += len(int16_data)
         self._frames_total["earEEG_Audio"] += len(int16_data)

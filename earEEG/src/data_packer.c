@@ -30,6 +30,7 @@ static void packer_task_fn(void *arg)
     uint8_t  last_eeg_data[48] = {0};
     uint16_t last_eeg_ch = 0;
     uint16_t last_eeg_sz = 0;
+    int16_t last_mic_sample = 0;
     TickType_t last_wake = xTaskGetTickCount();
 
     while (s_running) {
@@ -96,9 +97,19 @@ static void packer_task_fn(void *arg)
         frame_buf[mic_off + 1] = (mic_cnt >> 8) & 0xFF;
         // PCM data
         size_t mic_bytes = mic_cnt * sizeof(int16_t);
-        memset(frame_buf + mic_off + 2, 0, mic_bytes);
+        int16_t *mic_pcm = (int16_t *)(frame_buf + mic_off + 2);
+        for (uint16_t i = 0; i < mic_cnt; i++) {
+            mic_pcm[i] = last_mic_sample;
+        }
         if (g_rb_mic) {
-            ring_buf_read(g_rb_mic, frame_buf + mic_off + 2, mic_bytes);
+            size_t got = ring_buf_read(g_rb_mic, frame_buf + mic_off + 2, mic_bytes);
+            if (got >= sizeof(int16_t)) {
+                size_t samples = got / sizeof(int16_t);
+                last_mic_sample = mic_pcm[samples - 1];
+                for (uint16_t i = samples; i < mic_cnt; i++) {
+                    mic_pcm[i] = last_mic_sample;
+                }
+            }
         }
 
         // IMU PAYLOAD

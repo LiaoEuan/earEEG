@@ -10,6 +10,8 @@ static const char *TAG = "wm8960";
 #define WM8960_I2C_FREQ_HZ    100000
 #define WM8960_I2C_RETRIES    5
 
+#define WM8960_REG_LINVOL     0x00
+#define WM8960_REG_RINVOL     0x01
 #define WM8960_REG_LOUT1_VOL  0x02
 #define WM8960_REG_ROUT1_VOL  0x03
 #define WM8960_REG_CLOCKING1  0x04
@@ -17,6 +19,8 @@ static const char *TAG = "wm8960";
 #define WM8960_REG_AUDIO_IF   0x07
 #define WM8960_REG_LDAC_VOL   0x0A
 #define WM8960_REG_RDAC_VOL   0x0B
+#define WM8960_REG_LADC_VOL   0x15
+#define WM8960_REG_RADC_VOL   0x16
 #define WM8960_REG_RESET      0x0F
 #define WM8960_REG_PWR_MGMT1  0x19
 #define WM8960_REG_PWR_MGMT2  0x1A
@@ -29,6 +33,8 @@ static const char *TAG = "wm8960";
 #define WM8960_REG_PWR_MGMT3  0x2F
 #define WM8960_REG_ADD_CTRL4  0x30
 #define WM8960_REG_CLASS_D1   0x31
+#define WM8960_REG_ADCL_PATH  0x20
+#define WM8960_REG_ADCR_PATH  0x21
 
 static i2c_master_dev_handle_t s_dev = NULL;
 
@@ -74,8 +80,8 @@ bool wm8960_init_playback(void)
         return false;
     }
 
-    // Reset, establish VMID, then enable only the DAC, headphone drivers and
-    // output mixers required by the first playback-only migration stage.
+    // Reset, establish VMID, then enable the DAC/headphone path plus the
+    // onboard microphone capture path for the first WM8960 ADC test.
     if (!wm8960_write_reg(WM8960_REG_RESET,     0x000)) return false;
     vTaskDelay(pdMS_TO_TICKS(100));
     if (!wm8960_wait_for_ack("reset")) return false;
@@ -85,13 +91,22 @@ bool wm8960_init_playback(void)
     // Match Waveshare's playback example: the module oscillator is used
     // directly, with no ESP32 MCLK output and no codec PLL.
     if (!wm8960_write_reg(WM8960_REG_PWR_MGMT2,  0x1E0)) return false;
-    if (!wm8960_write_reg(WM8960_REG_PWR_MGMT3,  0x00C)) return false;
+    if (!wm8960_write_reg(WM8960_REG_PWR_MGMT3,  0x03C)) return false;
     if (!wm8960_write_reg(WM8960_REG_CLOCKING1,  0x000)) return false;
     if (!wm8960_write_reg(WM8960_REG_DAC_CTRL1,  0x000)) return false;
     if (!wm8960_write_reg(WM8960_REG_AUDIO_IF,  0x00E)) return false;
 
-    // Stage one only validates the headphone jack. Keep the speaker/Class-D
-    // path and input side tone path off; they add avoidable hiss on headphones.
+    // Conservative onboard mic path: unmuted PGAs at ~0 dB, modest MICBOOST,
+    // ADC digital volume around 0 dB. ALC/noise gate stay off for diagnosis.
+    if (!wm8960_write_reg(WM8960_REG_LINVOL,     0x117)) return false;
+    if (!wm8960_write_reg(WM8960_REG_RINVOL,     0x117)) return false;
+    if (!wm8960_write_reg(WM8960_REG_ADCL_PATH,  0x118)) return false;
+    if (!wm8960_write_reg(WM8960_REG_ADCR_PATH,  0x118)) return false;
+    if (!wm8960_write_reg(WM8960_REG_LADC_VOL,   0x1C3)) return false;
+    if (!wm8960_write_reg(WM8960_REG_RADC_VOL,   0x1C3)) return false;
+
+    // Keep the speaker/Class-D path and input side tone path off; they add
+    // avoidable hiss on headphones.
     if (!wm8960_write_reg(WM8960_REG_LDAC_VOL,  0x1FF)) return false;
     if (!wm8960_write_reg(WM8960_REG_RDAC_VOL,  0x1FF)) return false;
     if (!wm8960_write_reg(WM8960_REG_LOUT1_VOL, 0x160)) return false;
@@ -101,9 +116,9 @@ bool wm8960_init_playback(void)
     if (!wm8960_write_reg(WM8960_REG_CLASS_D1,  0x000)) return false;
     if (!wm8960_write_reg(WM8960_REG_LOUT_MIX,  0x100)) return false;
     if (!wm8960_write_reg(WM8960_REG_ROUT_MIX,  0x100)) return false;
-    if (!wm8960_write_reg(WM8960_REG_PWR_MGMT1, 0x0C0)) return false;
+    if (!wm8960_write_reg(WM8960_REG_PWR_MGMT1, 0x0FE)) return false;
 
     ESP_LOGI(TAG, "playback initialized (headphone-only, onboard MCLK, "
-             "44.1kHz, 32-bit I2S word, DAC-only output mixers)");
+             "44.1kHz, 32-bit I2S word, DAC + onboard mic ADC)");
     return true;
 }
