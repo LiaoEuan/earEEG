@@ -19,6 +19,7 @@ from urllib import error, request
 from urllib.parse import urlparse
 
 from .eeg_buffer import EEGBuffer
+from .impedance_service import ImpedanceService
 from .lsl_reader import LSLReader
 
 
@@ -35,6 +36,7 @@ class ViewerHandler(BaseHTTPRequestHandler):
     eeg_reader: LSLReader
     mic_buffer: EEGBuffer
     mic_reader: LSLReader
+    impedance: ImpedanceService
     proxy_url: str
 
     def do_GET(self) -> None:
@@ -46,11 +48,17 @@ class ViewerHandler(BaseHTTPRequestHandler):
         if path == "/api/proxy/status":
             self._proxy_get("/status")
             return
+        if path == "/api/impedance/status":
+            self._send_json(self.impedance.status())
+            return
 
         if path == "/":
             path = "/index.html"
         file_path = (STATIC_DIR / path.lstrip("/")).resolve()
         if not file_path.is_file() or STATIC_DIR not in file_path.parents:
+            if path.startswith("/api/"):
+                self._send_json({"ok": False, "error": f"unknown API route: {path}"}, 404)
+                return
             self.send_error(404)
             return
 
@@ -82,9 +90,18 @@ class ViewerHandler(BaseHTTPRequestHandler):
             self._proxy_post("/audio/resume")
         elif path == "/api/audio/stop":
             self._proxy_post("/audio/stop")
+        elif path == "/api/impedance/start":
+            body = self._read_json_body()
+            self._send_json(self.impedance.start(
+                channels=str(body.get("channels", "1-8")),
+                duration=float(body.get("duration", 3.0) or 3.0),
+            ))
         elif path == "/api/impedance/stop":
-            self._proxy_post("/impedance/stop")
+            self._send_json(self.impedance.stop())
         else:
+            if path.startswith("/api/"):
+                self._send_json({"ok": False, "error": f"unknown API route: {path}"}, 404)
+                return
             self.send_error(404)
 
     def log_message(self, fmt: str, *args) -> None:
@@ -259,6 +276,7 @@ def main() -> None:
     ViewerHandler.mic_buffer = mic_buffer
     ViewerHandler.mic_reader = mic_reader
     ViewerHandler.proxy_url = args.proxy_url.rstrip("/")
+    ViewerHandler.impedance = ImpedanceService(eeg_buffer, ViewerHandler.proxy_url)
     server = ThreadingHTTPServer((args.host, args.port), ViewerHandler)
     eeg_reader.start()
     mic_reader.start()

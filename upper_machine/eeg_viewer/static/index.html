@@ -39,6 +39,17 @@
             <option value="1000000">±1m</option>
           </select>
         </label>
+        <label>EEG unit
+          <select id="eegUnit">
+            <option value="uV" selected>uV</option>
+            <option value="mV">mV</option>
+            <option value="V">V</option>
+            <option value="counts">counts</option>
+          </select>
+        </label>
+        <label>Range
+          <select id="eegRange"></select>
+        </label>
         <button id="startAcqButton">Start acquisition</button>
         <button id="stopAcqButton">Stop acquisition</button>
         <button id="pauseButton">Pause</button>
@@ -58,6 +69,18 @@
         <button id="stopMonitorMicButton">Stop monitor</button>
         <span id="micMonitorStatus" class="badge warning">MIC monitor off</span>
       </section>
+      <section class="impedance-toolbar">
+        <label>Channels
+          <select id="impedanceChannels">
+            <option value="1-8" selected>Ch1-8</option>
+            <option value="1-16">Ch1-16</option>
+          </select>
+        </label>
+        <button id="startImpedanceButton">Measure impedance</button>
+        <button id="stopImpedanceButton">Stop impedance</button>
+        <span id="impedanceStatus" class="badge warning">Impedance idle</span>
+      </section>
+      <section id="impedanceGrid" class="impedance-grid"></section>
       <section class="plot-panel">
         <canvas id="eegCanvas"></canvas>
       </section>

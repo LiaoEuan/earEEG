@@ -7,7 +7,7 @@
 
 * { box-sizing: border-box; }
 body { margin: 0; }
-header, .toolbar, .audio-toolbar {
+header, .toolbar, .audio-toolbar, .impedance-toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -18,9 +18,10 @@ header, .toolbar, .audio-toolbar {
 }
 h1 { margin: 0; font-size: 20px; letter-spacing: .08em; }
 p { margin: 3px 0 0; color: #78919a; font-size: 12px; }
-.status, .toolbar, .audio-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; }
+.status, .toolbar, .audio-toolbar, .impedance-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; }
 .toolbar { justify-content: flex-start; padding: 9px 20px; font-size: 13px; }
 .audio-toolbar { justify-content: flex-start; padding: 9px 20px; font-size: 13px; }
+.impedance-toolbar { justify-content: flex-start; padding: 9px 20px; font-size: 13px; }
 .badge { padding: 4px 8px; border-radius: 12px; background: #18313a; }
 .badge.ok { color: #76dfb0; }
 .badge.warning { color: #f2bc6a; }
@@ -47,10 +48,31 @@ button:disabled {
   border-color: #76dfb0;
   color: #d9e8ec;
 }
+.impedance-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
+  gap: 8px;
+  padding: 8px 14px;
+  background: #0d1a21;
+  border-bottom: 1px solid #1d343e;
+}
+.impedance-cell {
+  padding: 7px 9px;
+  border: 1px solid #24404a;
+  border-radius: 6px;
+  background: #0b171d;
+  font-size: 12px;
+}
+.impedance-cell .channel { color: #8ba2aa; }
+.impedance-cell .value { margin-top: 3px; font-family: Consolas, monospace; }
+.impedance-cell.good .value { color: #76dfb0; }
+.impedance-cell.acceptable .value { color: #f2bc6a; }
+.impedance-cell.adjust-electrode .value { color: #fb7185; }
+.impedance-cell.measuring .value { color: #60a5fa; }
 #detail { color: #8ba2aa; }
 .plot-panel {
-  height: calc(100vh - 330px);
-  min-height: 420px;
+  height: calc(100vh - 420px);
+  min-height: 340px;
   padding: 10px 14px 16px;
 }
 #eegCanvas, #micCanvas {

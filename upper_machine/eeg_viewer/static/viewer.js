@@ -1,5 +1,39 @@
 const channels = 16;
 const micSampleRate = 16000;
+const eegGain = 24;
+const eegVoltsPerCount = 4.5 / eegGain / ((1 << 23) - 1);
+const eegRanges = {
+  uV: [
+    ["auto", "Auto"],
+    [50, "+/-50 uV"],
+    [100, "+/-100 uV"],
+    [250, "+/-250 uV"],
+    [500, "+/-500 uV"],
+    [1000, "+/-1000 uV"],
+  ],
+  mV: [
+    ["auto", "Auto"],
+    [0.05, "+/-0.05 mV"],
+    [0.1, "+/-0.1 mV"],
+    [0.25, "+/-0.25 mV"],
+    [0.5, "+/-0.5 mV"],
+    [1, "+/-1 mV"],
+  ],
+  V: [
+    ["auto", "Auto"],
+    [0.00005, "+/-0.00005 V"],
+    [0.0001, "+/-0.0001 V"],
+    [0.00025, "+/-0.00025 V"],
+    [0.0005, "+/-0.0005 V"],
+    [0.001, "+/-0.001 V"],
+  ],
+  counts: [
+    ["auto", "Auto"],
+    [50000, "+/-50k counts"],
+    [250000, "+/-250k counts"],
+    [1000000, "+/-1M counts"],
+  ],
+};
 const colors = [
   "#5eead4", "#60a5fa", "#c084fc", "#f472b6",
   "#fb7185", "#fb923c", "#facc15", "#a3e635",
@@ -15,6 +49,7 @@ let micMonitorEnabled = false;
 let micAudioContext = null;
 let micPlayTime = 0;
 const micMonitorLeadSeconds = 0.08;
+let impedanceTimer = null;
 const canvas = document.getElementById("eegCanvas");
 const micCanvas = document.getElementById("micCanvas");
 
@@ -22,6 +57,37 @@ function setBadge(id, text, ok) {
   const badge = document.getElementById(id);
   badge.textContent = text;
   badge.className = `badge ${ok ? "ok" : "warning"}`;
+}
+
+function updateRangeOptions() {
+  const unit = document.getElementById("eegUnit").value;
+  const range = document.getElementById("eegRange");
+  const previous = range.value || "auto";
+  range.innerHTML = "";
+  for (const [value, label] of eegRanges[unit]) {
+    const option = document.createElement("option");
+    option.value = String(value);
+    option.textContent = label;
+    range.appendChild(option);
+  }
+  range.value = eegRanges[unit].some(([value]) => String(value) === previous)
+    ? previous
+    : "auto";
+}
+
+function convertEegSample(raw, unit) {
+  if (unit === "counts") return raw;
+  const volts = raw * eegVoltsPerCount;
+  if (unit === "uV") return volts * 1e6;
+  if (unit === "mV") return volts * 1e3;
+  return volts;
+}
+
+function formatValue(value, unit) {
+  if (unit === "counts") return `${Math.round(value)} counts`;
+  if (Math.abs(value) >= 100) return `${value.toFixed(0)} ${unit}`;
+  if (Math.abs(value) >= 10) return `${value.toFixed(1)} ${unit}`;
+  return `${value.toFixed(2)} ${unit}`;
 }
 
 function setControls(proxy) {
@@ -131,6 +197,77 @@ async function refreshProxyStatus() {
   }
 }
 
+async function refreshImpedanceStatus() {
+  try {
+    const response = await fetch("/api/impedance/status");
+    const contentType = response.headers.get("Content-Type") || "";
+    if (!contentType.includes("application/json")) {
+      throw new Error("viewer backend has no impedance API; restart eeg_viewer");
+    }
+    const status = await response.json();
+    if (!response.ok) {
+      throw new Error(status.error || `HTTP ${response.status}`);
+    }
+    renderImpedance(status);
+  } catch (error) {
+    setBadge("impedanceStatus", `Impedance unavailable: ${error.message}`, false);
+  }
+}
+
+function renderImpedance(status) {
+  const running = Boolean(status && status.running);
+  const current = status && status.currentChannel ? status.currentChannel : 0;
+  const results = status && Array.isArray(status.results) ? status.results : [];
+  const lastError = status && status.lastError ? status.lastError : "";
+  const resultByChannel = new Map(results.map(result => [result.channel, result]));
+  setBadge("impedanceStatus",
+    running ? `Measuring Ch${current}` : (lastError || "Impedance idle"),
+    running && !lastError);
+  document.getElementById("startImpedanceButton").disabled = running;
+  document.getElementById("stopImpedanceButton").disabled = !running;
+
+  const grid = document.getElementById("impedanceGrid");
+  grid.innerHTML = "";
+  for (let channel = 1; channel <= 16; channel += 1) {
+    const result = resultByChannel.get(channel);
+    const cell = document.createElement("div");
+    const quality = result ? result.quality : (running && channel === current ? "measuring" : "");
+    cell.className = `impedance-cell ${quality}`;
+    const channelLabel = document.createElement("div");
+    channelLabel.className = "channel";
+    channelLabel.textContent = `CH${String(channel).padStart(2, "0")}`;
+    const value = document.createElement("div");
+    value.className = "value";
+    if (result) {
+      value.textContent = `${result.electrode_kohm.toFixed(1)} kOhm`;
+      value.title = `total=${result.total_kohm.toFixed(1)} kOhm, tone=${result.rms_uv.toFixed(1)} uVrms`;
+    } else if (running && channel === current) {
+      value.textContent = "measuring...";
+    } else {
+      value.textContent = "--";
+    }
+    cell.appendChild(channelLabel);
+    cell.appendChild(value);
+    grid.appendChild(cell);
+  }
+}
+
+async function startImpedanceMeasurement() {
+  const channelsValue = document.getElementById("impedanceChannels").value;
+  const result = await postJson("/api/impedance/start", {
+    channels: channelsValue,
+    duration: 3.0,
+  });
+  if (result && result.ok !== false) {
+    refreshImpedanceStatus();
+  }
+}
+
+async function stopImpedanceMeasurement() {
+  await postControl("/api/impedance/stop");
+  refreshImpedanceStatus();
+}
+
 async function startMicMonitor() {
   const detail = document.getElementById("detail");
   const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -182,7 +319,8 @@ function queueMicAudio(samples, sampleRate) {
 function draw() {
   const seconds = Number(document.getElementById("windowSeconds").value);
   const count = seconds * 250;
-  const scaleValue = document.getElementById("amplitudeMode").value;
+  const unit = document.getElementById("eegUnit").value;
+  const scaleValue = document.getElementById("eegRange").value;
   const rect = canvas.getBoundingClientRect();
   const ratio = window.devicePixelRatio || 1;
   const pixelWidth = Math.max(1, Math.floor(rect.width * ratio));
@@ -196,7 +334,7 @@ function draw() {
   const width = rect.width;
   const height = rect.height;
   const labelWidth = 54;
-  const valueWidth = 92;
+  const valueWidth = 130;
   const plotLeft = labelWidth;
   const plotRight = width - valueWidth;
   const plotWidth = Math.max(1, plotRight - plotLeft);
@@ -219,7 +357,8 @@ function draw() {
 
   for (let channel = 0; channel < channels; channel += 1) {
     const baseline = (channel + 0.5) * rowHeight;
-    const data = latest[channel].slice(-count);
+    const rawData = latest[channel].slice(-count);
+    const data = rawData.map(sample => convertEegSample(sample, unit));
     ctx.strokeStyle = "#17343c";
     ctx.beginPath();
     ctx.moveTo(plotLeft, baseline);
@@ -235,11 +374,17 @@ function draw() {
 
     const mean = data.reduce((sum, sample) => sum + sample, 0) / data.length;
     const centered = data.map(sample => sample - mean);
-    const peak = Math.max(...centered.map(Math.abs), 1);
+    let peak = 1;
+    let min = data[0];
+    let max = data[0];
+    for (let i = 0; i < data.length; i += 1) {
+      const abs = Math.abs(centered[i]);
+      if (abs > peak) peak = abs;
+      if (data[i] < min) min = data[i];
+      if (data[i] > max) max = data[i];
+    }
     const scale = scaleValue === "auto" ? peak * 1.15 : Number(scaleValue);
-    const min = Math.min(...data);
-    const max = Math.max(...data);
-    ctx.fillText(`p-p ${Math.round(max - min)}`, plotRight + 10, baseline + 4);
+    ctx.fillText(`p-p ${formatValue(max - min, unit)}`, plotRight + 10, baseline + 4);
     ctx.strokeStyle = colors[channel];
     ctx.lineWidth = 1;
     ctx.beginPath();
@@ -396,6 +541,14 @@ document.getElementById("monitorMicButton").onclick = () => startMicMonitor();
 
 document.getElementById("stopMonitorMicButton").onclick = () => stopMicMonitor();
 
+document.getElementById("eegUnit").onchange = () => updateRangeOptions();
+
+document.getElementById("startImpedanceButton").onclick = () =>
+  startImpedanceMeasurement();
+
+document.getElementById("stopImpedanceButton").onclick = () =>
+  stopImpedanceMeasurement();
+
 const dropZone = document.getElementById("audioDropZone");
 dropZone.ondragover = event => {
   event.preventDefault();
@@ -408,9 +561,17 @@ dropZone.ondrop = event => {
   uploadAudio(event.dataTransfer.files[0]);
 };
 
+const legacyAmplitude = document.getElementById("amplitudeMode");
+if (legacyAmplitude) {
+  legacyAmplitude.closest("label").style.display = "none";
+}
+
 setControls({ connected: false, acquiring: false });
 setMicMonitorStatus();
+updateRangeOptions();
+renderImpedance({ running: false, results: [] });
 setInterval(refreshProxyStatus, 1000);
+impedanceTimer = setInterval(refreshImpedanceStatus, 1000);
 connect();
 draw();
 drawMic();
