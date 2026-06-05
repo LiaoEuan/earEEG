@@ -107,15 +107,19 @@ ESP32 在 AP（热点）模式下的 IP 固定为 **192.168.4.1**。电脑连接
 ```bash
 cd earEEG/upper_machine
 
-# 基本模式：连接并打印传感器数据到终端
+# 基本模式：连接设备并等待显式采集控制
 # AP 模式下 --host 可省略（默认值 192.168.4.1 即 ESP32 热点 IP）
-python -m upper_machine.lsl_proxy.main --verbose
+python -m upper_machine.lsl_proxy.main --lsl
+
+# 调试时如需连接后立刻开始采集，可显式添加 --start
+python -m upper_machine.lsl_proxy.main --lsl --start --verbose
 ```
 
 **输出示例**：
 ```
 [proxy] connecting to 192.168.1.100:8888 ...
-[proxy] sending CMD_START_ACQ ...
+[control] listening on http://127.0.0.1:8787
+[proxy] acquisition is idle; use the control API or --start
 [SENSOR] seq=   1 ts=     1234567 | EEG[ 8ch]  123  456  789 ... | MIC    1234    5678 ... | QUAT w=0.99 x=0.01 y=0.02 z=0.01
 [SENSOR] seq=   2 ts=     1234571 | EEG[ 8ch]  124  457  788 ... | MIC    1235    5679 ... | QUAT w=0.99 x=0.01 y=0.02 z=0.01
 [SENSOR] seq=   3 ts=     1234575 | EEG[ 8ch]  125  458  787 ... | MIC    1236    5680 ... | QUAT w=0.99 x=0.01 y=0.02 z=0.01
@@ -140,6 +144,12 @@ python -m upper_machine.recorder.main --duration 60 --output ./recordings
 - `earEEG_Audio_2026-05-27T120000.wav` — 音频数据
 - `earEEG_IMU_2026-05-27T120000.csv` — IMU 数据
 
+**终端 3 — Browser Viewer（可视化与控制）**：
+```bash
+python -m upper_machine.eeg_viewer.main
+```
+打开 `http://127.0.0.1:8765` 后，可以在网页中点击 `Start acquisition` / `Stop acquisition` 控制采集。拖入或选择 WAV 文件后，点击 `Play audio` 即可通过 `lsl_proxy` 的唯一 TCP 连接向设备发送下行音频；`Pause audio` / `Resume audio` / `Stop audio` 用于控制播放。
+
 ---
 
 ## 四、lsl_proxy 详细说明
@@ -151,10 +161,14 @@ python -m upper_machine.recorder.main --duration 60 --output ./recordings
 | `--host` | `192.168.4.1` | ESP32 的 IP 地址 |
 | `--port` | `8888` | TCP 端口号 |
 | `--cmd` | (无) | 单次命令模式，发送 ASCII 命令并退出 |
-| `--no-start` | (False) | 连接后不自动发送开始采集指令 |
+| `--start` | (False) | 连接后显式发送开始采集指令；默认不自动采集 |
 | `--verbose` / `-v` | (False) | 打印每一帧传感器数据到终端 |
 | `--stats` / `-s` | (False) | 每秒打印统计信息（帧率、丢包率） |
 | `--lsl` | (False) | 将数据推送到 LSL 实时流（需 pylsl） |
+| `--play` | (无) | 调试用：通过同一 TCP 连接播放指定 WAV 文件 |
+| `--control-host` | `127.0.0.1` | 本机控制 API 监听地址 |
+| `--control-port` | `8787` | 本机控制 API 端口 |
+| `--no-control` | (False) | 禁用本机控制 API |
 
 ### 4.2 模式详解
 
@@ -162,13 +176,13 @@ python -m upper_machine.recorder.main --duration 60 --output ./recordings
 ```bash
 python -m upper_machine.lsl_proxy.main --host 192.168.1.100
 ```
-连接到 ESP32，接收数据但不打印（除非加 `--verbose`）。用于确认连接正常。
+连接到 ESP32 并保持唯一 TCP 入口，但默认不开始采集。开始/停止采集由本机控制 API 或网页界面触发；调试时可加 `--start`。
 
 **模式 2：详细终端输出**
 ```bash
 python -m upper_machine.lsl_proxy.main --host 192.168.1.100 --verbose
 ```
-每帧打印 EEG 前 8 通道、麦克风前 8 个采样、四元数。同时自动检测丢包。
+如果采集已由控制 API 或 `--start` 打开，则每帧打印 EEG 前 8 通道、麦克风前 8 个采样、四元数。同时自动检测丢包。
 
 **模式 3：统计模式**
 ```bash
@@ -304,7 +318,10 @@ pio run -d earEEG/earEEG -t monitor
 
 # 终端 3：运行 LSL Proxy（实时数据预览）
 cd earEEG/upper_machine
-python -m upper_machine.lsl_proxy.main --host 192.168.1.100 --verbose --stats
+python -m upper_machine.lsl_proxy.main --host 192.168.1.100 --lsl --stats
+
+# 终端 4：运行网页 viewer，点击 Start acquisition 开始采集
+python -m upper_machine.eeg_viewer.main
 ```
 
 ### 场景：采集并保存数据
@@ -313,7 +330,10 @@ python -m upper_machine.lsl_proxy.main --host 192.168.1.100 --verbose --stats
 # 终端 1：LSL Proxy（持续运行）
 python -m upper_machine.lsl_proxy.main --host 192.168.1.100 --lsl
 
-# 终端 2：Recorder（录制 5 分钟）
+# 终端 2：网页 viewer，点击 Start acquisition 开始采集
+python -m upper_machine.eeg_viewer.main
+
+# 终端 3：Recorder（录制 5 分钟）
 python -m upper_machine.recorder.main --duration 300 --output ./my_recording
 ```
 
@@ -353,8 +373,9 @@ python -m upper_machine.lsl_proxy.main --host 192.168.1.100 --cmd "z110Z"
 **Q: 移动模式下需要指定 `--host` 吗？**
 A: 不需要。`lsl_proxy` 的 `--host` 默认值为 `192.168.4.1`，正好匹配 ESP32 在 AP 模式下的 IP。连接电脑到 `earEEG` 热点后直接运行即可：
 ```bash
-python -m upper_machine.lsl_proxy.main --verbose
+python -m upper_machine.lsl_proxy.main --lsl
 ```
+然后运行 `python -m upper_machine.eeg_viewer.main`，在网页中点击 `Start acquisition`。
 
 ---
 
@@ -372,9 +393,10 @@ python -m upper_machine.lsl_proxy.main --verbose
 
 # 3. 运行 lsl_proxy（无需指定 --host，默认 192.168.4.1 即为 ESP32 热点 IP）
 cd earEEG/upper_machine
-python -m upper_machine.lsl_proxy.main --verbose
+python -m upper_machine.lsl_proxy.main --lsl
 
-# 4. 数据到达后会自动开始采集，按 Ctrl+C 停止
+# 4. 运行网页 viewer，点击 Start acquisition 开始采集
+python -m upper_machine.eeg_viewer.main
 ```
 
 ### 全程示例（带 LSL 流和录制）

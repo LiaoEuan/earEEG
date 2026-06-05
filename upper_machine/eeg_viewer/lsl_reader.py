@@ -1,4 +1,4 @@
-"""Background LSL reader for the 16-channel EEG stream."""
+"""Background LSL reader for a fixed-channel numeric stream."""
 
 from __future__ import annotations
 
@@ -18,9 +18,11 @@ except ImportError:
 
 
 class LSLReader:
-    def __init__(self, buffer: EEGBuffer, stream_name: str = "earEEG_EEG"):
+    def __init__(self, buffer: EEGBuffer, stream_name: str = "earEEG_EEG",
+                 max_samples: int = 128):
         self.buffer = buffer
         self.stream_name = stream_name
+        self.max_samples = max_samples
         self.connected = False
         self.last_error = ""
         self._running = False
@@ -50,7 +52,8 @@ class LSLReader:
 
             try:
                 while self._running and self._inlet:
-                    chunk, _ = self._inlet.pull_chunk(timeout=0.5, max_samples=128)
+                    chunk, _ = self._inlet.pull_chunk(timeout=0.5,
+                                                      max_samples=self.max_samples)
                     if chunk:
                         samples = np.asarray(chunk, dtype=np.float32)
                         if samples.ndim != 2 or samples.shape[1] != self.buffer.channels:

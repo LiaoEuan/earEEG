@@ -14,7 +14,10 @@
       </div>
       <div class="status">
         <span id="socketStatus" class="badge warning">WebSocket connecting</span>
+        <span id="proxyStatus" class="badge warning">Device unknown</span>
+        <span id="acqStatus" class="badge warning">Acquisition idle</span>
         <span id="lslStatus" class="badge warning">LSL waiting</span>
+        <span id="micStatus" class="badge warning">MIC waiting</span>
         <span><b id="sampleRate">250</b> Hz</span>
         <span><b id="sampleCount">0</b> samples</span>
       </div>
@@ -36,11 +39,34 @@
             <option value="1000000">±1m</option>
           </select>
         </label>
+        <button id="startAcqButton">Start acquisition</button>
+        <button id="stopAcqButton">Stop acquisition</button>
         <button id="pauseButton">Pause</button>
         <span id="detail">Waiting for EEG samples</span>
       </section>
+      <section class="audio-toolbar">
+        <div id="audioDropZone" class="drop-zone">
+          Drop WAV here or <button id="chooseAudioButton" type="button">Choose file</button>
+          <input id="audioFileInput" type="file" accept=".wav,audio/wav" hidden>
+        </div>
+        <button id="playAudioButton">Play audio</button>
+        <button id="pauseAudioButton">Pause audio</button>
+        <button id="resumeAudioButton">Resume audio</button>
+        <button id="stopAudioButton">Stop audio</button>
+        <span id="audioStatus" class="badge warning">No audio selected</span>
+        <button id="monitorMicButton">Monitor MIC</button>
+        <button id="stopMonitorMicButton">Stop monitor</button>
+        <span id="micMonitorStatus" class="badge warning">MIC monitor off</span>
+      </section>
       <section class="plot-panel">
         <canvas id="eegCanvas"></canvas>
+      </section>
+      <section class="mic-panel">
+        <div class="panel-title">
+          <span>MIC input</span>
+          <span id="micDetail">Waiting for MIC samples</span>
+        </div>
+        <canvas id="micCanvas"></canvas>
       </section>
     </main>
     <script src="/viewer.js"></script>
