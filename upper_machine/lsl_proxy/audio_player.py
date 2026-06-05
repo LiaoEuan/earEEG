@@ -3,6 +3,7 @@
 import threading
 import time
 import wave
+from pathlib import Path
 
 from .tcp_client import TCPClient
 
@@ -17,7 +18,11 @@ class AudioPlayer:
         self._prefill_ms = prefill_ms
         self._batch_ms = batch_ms
         self._stop = threading.Event()
+        self._pause = threading.Event()
         self._thread = threading.Thread(target=self._run, daemon=True)
+        self._lock = threading.Lock()
+        self._finished = False
+        self._last_error = ""
 
     def start(self):
         self._thread.start()
@@ -26,6 +31,37 @@ class AudioPlayer:
         self._stop.set()
         if self._thread.is_alive():
             self._thread.join(timeout=1.0)
+
+    def pause(self):
+        self._pause.set()
+
+    def resume(self):
+        self._pause.clear()
+
+    @property
+    def wav_path(self) -> str:
+        return self._wav_path
+
+    @property
+    def file_name(self) -> str:
+        return Path(self._wav_path).name
+
+    @property
+    def running(self) -> bool:
+        return self._thread.is_alive() and not self._finished
+
+    @property
+    def paused(self) -> bool:
+        return self._pause.is_set() and self.running
+
+    @property
+    def finished(self) -> bool:
+        return self._finished
+
+    @property
+    def last_error(self) -> str:
+        with self._lock:
+            return self._last_error
 
     def _run(self):
         try:
@@ -53,8 +89,18 @@ class AudioPlayer:
                 chunks_sent = 0
                 pace_origin = None
                 while not self._stop.is_set() and self._client.connected:
+                    if self._pause.is_set():
+                        while self._pause.is_set() and not self._stop.is_set():
+                            self._stop.wait(0.05)
+                        if pace_origin is not None:
+                            paced_chunks = max(0, chunks_sent - prefill_count)
+                            pace_origin = time.monotonic() - paced_chunks * chunk_sec
+                        continue
+
                     eof = False
                     for _ in range(batch_size):
+                        if self._stop.is_set() or self._pause.is_set():
+                            break
                         raw = wf.readframes(chunk_frames)
                         if not raw:
                             eof = True
@@ -66,6 +112,7 @@ class AudioPlayer:
 
                     if eof:
                         print("[play] playback finished")
+                        self._finished = True
                         return
 
                     if chunks_sent >= prefill_count:
@@ -77,7 +124,11 @@ class AudioPlayer:
                         if delay > 0.001:
                             self._stop.wait(delay)
         except (OSError, ValueError, wave.Error) as e:
+            with self._lock:
+                self._last_error = str(e)
             print(f"[play] playback failed: {e}")
+        finally:
+            self._finished = True
 
 
 def _to_stereo_16bit(raw: bytes, channels: int, sample_width: int) -> bytes:

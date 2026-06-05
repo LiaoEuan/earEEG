@@ -1,7 +1,7 @@
 [project]
 name = "upper-machine"
 version = "0.1.0"
-description = "Add your description here"
+description = "PC-side LSL proxy and browser viewer for earEEG"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [

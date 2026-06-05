@@ -1,6 +1,17 @@
 .omo/
-.pio/
-**/.pio/
-__pycache__/
-*.py[cod]
 
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info/
+
+# Virtual environments
+.venv/
+upper_machine/.venv/
+
+# PlatformIO/firmware build leftovers kept out of the cleaned upper-machine branch
+earEEG/.pio/
+earEEG/.vscode/

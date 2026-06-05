@@ -1,10 +1,10 @@
-"""Background LSL reader for the 16-channel EEG stream."""
+"""Background LSL reader for a fixed-channel numeric stream."""
 
 from __future__ import annotations
 
 import threading
 import time
-from typing import Optional
+from typing import Callable, Optional
 
 import numpy as np
 
@@ -18,9 +18,13 @@ except ImportError:
 
 
 class LSLReader:
-    def __init__(self, buffer: EEGBuffer, stream_name: str = "earEEG_EEG"):
+    def __init__(self, buffer: EEGBuffer, stream_name: str = "earEEG_EEG",
+                 max_samples: int = 128,
+                 on_samples: Optional[Callable[[np.ndarray], None]] = None):
         self.buffer = buffer
         self.stream_name = stream_name
+        self.max_samples = max_samples
+        self.on_samples = on_samples
         self.connected = False
         self.last_error = ""
         self._running = False
@@ -50,7 +54,8 @@ class LSLReader:
 
             try:
                 while self._running and self._inlet:
-                    chunk, _ = self._inlet.pull_chunk(timeout=0.5, max_samples=128)
+                    chunk, _ = self._inlet.pull_chunk(timeout=0.5,
+                                                      max_samples=self.max_samples)
                     if chunk:
                         samples = np.asarray(chunk, dtype=np.float32)
                         if samples.ndim != 2 or samples.shape[1] != self.buffer.channels:
@@ -59,6 +64,8 @@ class LSLReader:
                                 f"expected {self.buffer.channels}"
                             )
                         self.buffer.append(samples)
+                        if self.on_samples:
+                            self.on_samples(samples.copy())
             except Exception as exc:
                 self.last_error = str(exc)
                 self.connected = False

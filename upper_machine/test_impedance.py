@@ -3,7 +3,7 @@ import unittest
 
 import numpy as np
 
-from upper_machine.calibration.impedance import (
+from upper_machine.impedance import (
     adc_volts_per_count,
     calculate_impedance,
     classify_impedance,

@@ -12,6 +12,7 @@ import signal
 import sys
 import time
 
+from .control_server import ControlServer, ProxyController, ProxyStatus
 from .tcp_client import TCPClient
 from upper_machine.common.protocol import SensorData
 
@@ -24,8 +25,10 @@ def main():
                         help="TCP port (default: 8888)")
     parser.add_argument("--cmd", default=None,
                         help="send a single raw ASCII command (as CMD=0x10 payload) and exit")
+    parser.add_argument("--start", action="store_true",
+                        help="send CMD_START_ACQ after connecting (default: wait for control)")
     parser.add_argument("--no-start", action="store_true",
-                        help="do not auto-send CMD_START_ACQ on connect")
+                        help=argparse.SUPPRESS)
     parser.add_argument("--verbose", "-v", action="store_true",
                         help="print every frame to stdout")
     parser.add_argument("--stats", "-s", action="store_true",
@@ -38,6 +41,12 @@ def main():
                         help="downlink pre-fill duration in ms (default: 500)")
     parser.add_argument("--batch-ms", type=int, default=50,
                         help="downlink audio sent per pacing cycle in ms (default: 50)")
+    parser.add_argument("--control-host", default="127.0.0.1",
+                        help="local control API host (default: 127.0.0.1)")
+    parser.add_argument("--control-port", type=int, default=8787,
+                        help="local control API port (default: 8787)")
+    parser.add_argument("--no-control", action="store_true",
+                        help="disable the local HTTP control API")
     args = parser.parse_args()
 
     # ── Single command mode ────────────────────────────────────
@@ -60,15 +69,31 @@ def main():
     # ── TCP client ─────────────────────────────────────────────
 
     client = TCPClient(args.host, args.port)
-    audio_player = None
+    control_server = None
 
     # Statistics
     frame_count = 0
     last_seq = -1
     lost_packets = 0
     start_time = 0.0
-    last_stats_time = 0.0
     origin_set = False
+
+    def _current_status() -> ProxyStatus:
+        elapsed = max(time.time() - start_time, 0.001)
+        loss = (lost_packets / (frame_count + lost_packets) * 100
+                if (frame_count + lost_packets) > 0 else 0)
+        fps = frame_count / elapsed if start_time > 0 else 0
+        return ProxyStatus(
+            connected=client.connected,
+            acquiring=controller.acquiring,
+            frame_count=frame_count,
+            lost_packets=lost_packets,
+            fps=fps,
+            loss_percent=loss,
+            last_error=controller.last_error,
+        )
+
+    controller = ProxyController(client, _current_status)
 
     def on_sensor(s: SensorData):
         nonlocal frame_count, last_seq, lost_packets, origin_set
@@ -107,7 +132,8 @@ def main():
     def _shutdown(sig=None, frame=None):
         if running[0]:
             print("\n[proxy] shutting down...")
-            client.stop_acquisition()
+            if controller.acquiring and client.connected:
+                controller.stop_acquisition()
             running[0] = False
 
     signal.signal(signal.SIGINT, _shutdown)
@@ -120,19 +146,29 @@ def main():
         print("[proxy] connection failed")
         sys.exit(1)
 
-    if not args.no_start:
+    if not args.no_control:
+        control_server = ControlServer(args.control_host, args.control_port, controller)
+        try:
+            control_server.start()
+        except OSError as e:
+            print(f"[control] failed to start: {e}")
+            client.disconnect()
+            sys.exit(1)
+
+    if args.start and not args.no_start:
         time.sleep(0.3)
         print("[proxy] sending CMD_START_ACQ ...")
-        client.start_acquisition()
+        controller.start_acquisition()
+    else:
+        print("[proxy] acquisition is idle; use the control API or --start")
 
     if args.play:
-        from .audio_player import AudioPlayer
-        audio_player = AudioPlayer(client, args.play, prefill_ms=args.prefill,
-                                   batch_ms=args.batch_ms)
-        audio_player.start()
+        result = controller.play_audio(args.play, prefill_ms=args.prefill,
+                                       batch_ms=args.batch_ms)
+        if not result.get("ok"):
+            print(f"[play] {result.get('error', 'failed to start playback')}")
 
     start_time = time.time()
-    last_stats_time = start_time
 
     # ── Main loop ──────────────────────────────────────────────
 
@@ -153,8 +189,10 @@ def main():
         pass
     finally:
         _shutdown()
-        if audio_player:
-            audio_player.stop()
+        controller.stop_audio()
+        if control_server:
+            control_server.stop()
+        controller.mark_disconnected()
         client.disconnect()
         if lsl_manager:
             lsl_manager.close()
