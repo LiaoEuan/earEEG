@@ -90,6 +90,50 @@
         <span id="recordingStatus" class="badge warning">Recording idle</span>
         <span id="recordingDetail">NPZ: eeg, mic, stimuli</span>
       </section>
+      <section class="focus-panel">
+        <div class="focus-score-block">
+          <div id="focusScore" class="focus-score">--</div>
+          <div class="focus-score-label">Focus</div>
+        </div>
+        <div class="focus-info">
+          <div class="focus-state-row">
+            <span id="focusState" class="focus-state">waiting</span>
+            <span id="focusQuality" class="focus-quality">--</span>
+          </div>
+          <div id="focusReasons" class="focus-reasons"></div>
+          <div class="focus-bands">
+            <div class="focus-band" data-band="delta">
+              <div class="focus-band-bar-bg"><div id="focusBarDelta" class="focus-band-bar"></div></div>
+              <span class="focus-band-label">δ</span>
+              <span id="focusBandDelta" class="focus-band-value">--</span>
+            </div>
+            <div class="focus-band" data-band="theta">
+              <div class="focus-band-bar-bg"><div id="focusBarTheta" class="focus-band-bar"></div></div>
+              <span class="focus-band-label">θ</span>
+              <span id="focusBandTheta" class="focus-band-value">--</span>
+            </div>
+            <div class="focus-band" data-band="alpha">
+              <div class="focus-band-bar-bg"><div id="focusBarAlpha" class="focus-band-bar"></div></div>
+              <span class="focus-band-label">α</span>
+              <span id="focusBandAlpha" class="focus-band-value">--</span>
+            </div>
+            <div class="focus-band" data-band="beta">
+              <div class="focus-band-bar-bg"><div id="focusBarBeta" class="focus-band-bar"></div></div>
+              <span class="focus-band-label">β</span>
+              <span id="focusBandBeta" class="focus-band-value">--</span>
+            </div>
+            <div class="focus-band" data-band="gamma">
+              <div class="focus-band-bar-bg"><div id="focusBarGamma" class="focus-band-bar"></div></div>
+              <span class="focus-band-label">γ</span>
+              <span id="focusBandGamma" class="focus-band-value">--</span>
+            </div>
+          </div>
+          <div class="focus-ratios">
+            <span>θ/β: <b id="focusThetaBeta">--</b></span>
+            <span>α/β: <b id="focusAlphaBeta">--</b></span>
+          </div>
+        </div>
+      </section>
       <section class="plot-panel">
         <canvas id="eegCanvas"></canvas>
       </section>
