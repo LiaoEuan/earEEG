@@ -1,0 +1,22 @@
+{
+  "name": "earEEG 16ch",
+  "description": "Default 16-channel earEEG configuration",
+  "channels": [
+    {"id": 1, "name": "Fp1", "position": "left", "type": "eeg", "enabled": true, "focus": true},
+    {"id": 2, "name": "Fp2", "position": "right", "type": "eeg", "enabled": true, "focus": true},
+    {"id": 3, "name": "F3", "position": "left", "type": "eeg", "enabled": true, "focus": true},
+    {"id": 4, "name": "F4", "position": "right", "type": "eeg", "enabled": true, "focus": true},
+    {"id": 5, "name": "C3", "position": "left", "type": "eeg", "enabled": true, "focus": true},
+    {"id": 6, "name": "C4", "position": "right", "type": "eeg", "enabled": true, "focus": true},
+    {"id": 7, "name": "P3", "position": "left", "type": "eeg", "enabled": true, "focus": true},
+    {"id": 8, "name": "P4", "position": "right", "type": "eeg", "enabled": true, "focus": true},
+    {"id": 9, "name": "O1", "position": "left", "type": "eeg", "enabled": true, "focus": true},
+    {"id": 10, "name": "O2", "position": "right", "type": "eeg", "enabled": true, "focus": true},
+    {"id": 11, "name": "T3", "position": "left", "type": "eeg", "enabled": true, "focus": true},
+    {"id": 12, "name": "T4", "position": "right", "type": "eeg", "enabled": true, "focus": true},
+    {"id": 13, "name": "A1", "position": "left", "type": "ref", "enabled": false, "focus": false},
+    {"id": 14, "name": "A2", "position": "right", "type": "ref", "enabled": false, "focus": false},
+    {"id": 15, "name": "GND", "position": "center", "type": "ground", "enabled": false, "focus": false},
+    {"id": 16, "name": "EXT", "position": "center", "type": "ext", "enabled": false, "focus": false}
+  ]
+}
