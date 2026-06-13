@@ -74,6 +74,8 @@ class ViewerHandler(BaseHTTPRequestHandler):
             content_type = "text/javascript; charset=utf-8"
         elif file_path.suffix == ".css":
             content_type = "text/css; charset=utf-8"
+        elif file_path.suffix == ".json":
+            content_type = "application/json; charset=utf-8"
         body = file_path.read_bytes()
         self.send_response(200)
         self.send_header("Content-Type", content_type)
