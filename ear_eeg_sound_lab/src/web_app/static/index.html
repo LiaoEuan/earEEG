@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>earEEG Realtime</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, system-ui, sans-serif; background: #1a1a2e; color: #eee; }
+.header { display: flex; justify-content: space-between; padding: 12px 20px; background: #16213e; }
+.status { display: flex; gap: 16px; align-items: center; }
+.badge { padding: 4px 10px; border-radius: 12px; font-size: 13px; }
+.badge.ok { background: #0f3d0f; color: #4caf50; }
+.badge.err { background: #3d0f0f; color: #f44336; }
+.main { display: grid; grid-template-columns: 1fr 280px; gap: 16px; padding: 16px; height: calc(100vh - 56px); }
+.panel { background: #16213e; border-radius: 8px; padding: 16px; overflow: hidden; }
+.panel h3 { font-size: 14px; color: #aaa; margin-bottom: 12px; }
+canvas { width: 100%; background: #0a0a1a; border-radius: 4px; }
+.focus-score { font-size: 64px; font-weight: bold; text-align: center; }
+.focus-state { text-align: center; font-size: 18px; margin: 8px 0; }
+.reasons { font-size: 12px; color: #aaa; list-style: none; }
+.reasons li { margin: 4px 0; }
+.bars { display: flex; gap: 8px; align-items: flex-end; height: 120px; }
+.bar-col { flex: 1; display: flex; flex-direction: column; align-items: center; }
+.bar { width: 100%; background: #4caf50; border-radius: 2px 2px 0 0; transition: height 0.2s; min-height: 2px; }
+.bar-label { font-size: 11px; text-align: center; color: #aaa; margin-top: 4px; }
+.ratios { font-size: 13px; color: #aaa; margin-top: 12px; }
+.ratios div { margin: 4px 0; }
+</style>
+</head>
+<body>
+<div class="header">
+  <div class="status">
+    <span>earEEG Realtime</span>
+    <span id="conn-badge" class="badge err">disconnected</span>
+    <span id="device-badge" class="badge err">no device</span>
+  </div>
+  <div class="status">
+    <span id="fps">0 fps</span>
+  </div>
+</div>
+<div class="main">
+  <div class="panel">
+    <h3>EEG Waveform (16 channels)</h3>
+    <canvas id="eeg-canvas" height="400"></canvas>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:16px;">
+    <div class="panel">
+      <h3>Focus</h3>
+      <div id="focus-score" class="focus-score">--</div>
+      <div id="focus-state" class="focus-state">unknown</div>
+      <ul id="focus-reasons" class="reasons"></ul>
+    </div>
+    <div class="panel">
+      <h3>Band Powers</h3>
+      <div id="bars" class="bars">
+        <div class="bar-col"><div class="bar" id="bar-delta" style="height:2px"></div><div class="bar-label">delta</div></div>
+        <div class="bar-col"><div class="bar" id="bar-theta" style="height:2px"></div><div class="bar-label">theta</div></div>
+        <div class="bar-col"><div class="bar" id="bar-alpha" style="height:2px"></div><div class="bar-label">alpha</div></div>
+        <div class="bar-col"><div class="bar" id="bar-beta" style="height:2px"></div><div class="bar-label">beta</div></div>
+        <div class="bar-col"><div class="bar" id="bar-gamma" style="height:2px"></div><div class="bar-label">gamma</div></div>
+      </div>
+      <div class="ratios">
+        <div>theta/beta: <span id="tbr">--</span></div>
+        <div>alpha/beta: <span id="abr">--</span></div>
+        <div>Quality: <span id="quality">--</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+const canvas = document.getElementById('eeg-canvas');
+const ctx = canvas.getContext('2d');
+let ws, msgCount = 0, lastFpsTime = Date.now();
+
+function connect() {
+  ws = new WebSocket('ws://' + location.host + '/ws');
+  ws.onopen = function() {
+    document.getElementById('conn-badge').className = 'badge ok';
+    document.getElementById('conn-badge').textContent = 'connected';
+  };
+  ws.onclose = function() {
+    document.getElementById('conn-badge').className = 'badge err';
+    document.getElementById('conn-badge').textContent = 'disconnected';
+    setTimeout(connect, 2000);
+  };
+  ws.onmessage = function(e) {
+    var state = JSON.parse(e.data);
+    update(state);
+  };
+}
+
+function update(state) {
+  msgCount++;
+  var now = Date.now();
+  if (now - lastFpsTime > 1000) {
+    document.getElementById('fps').textContent = msgCount + ' fps';
+    msgCount = 0;
+    lastFpsTime = now;
+  }
+
+  var dev = state.device;
+  var devBadge = document.getElementById('device-badge');
+  devBadge.className = dev.connected ? 'badge ok' : 'badge err';
+  devBadge.textContent = dev.connected ? dev.streamName : 'no device';
+
+  document.getElementById('focus-score').textContent = state.focus.score;
+  document.getElementById('focus-state').textContent = state.focus.state;
+  var ul = document.getElementById('focus-reasons');
+  ul.innerHTML = '';
+  state.focus.reasons.forEach(function(r) {
+    var li = document.createElement('li');
+    li.textContent = r;
+    ul.appendChild(li);
+  });
+
+  document.getElementById('quality').textContent = (state.focus.quality * 100).toFixed(0) + '%';
+
+  var bp = state.features.globalBandPowers;
+  var maxBp = Math.max(bp.delta, bp.theta, bp.alpha, bp.beta, bp.gamma, 0.01);
+  ['delta','theta','alpha','beta','gamma'].forEach(function(b) {
+    document.getElementById('bar-' + b).style.height = Math.max(2, bp[b] / maxBp * 100) + 'px';
+  });
+  document.getElementById('tbr').textContent = state.features.thetaBetaRatio.toFixed(2);
+  document.getElementById('abr').textContent = state.features.alphaBetaRatio.toFixed(2);
+
+  drawWaveform(state.eeg);
+}
+
+function drawWaveform(eeg) {
+  if (!eeg.samples || eeg.samples.length === 0) return;
+  canvas.width = canvas.offsetWidth;
+  canvas.height = canvas.offsetHeight;
+  var w = canvas.width, h = canvas.height;
+  var ch = eeg.channels;
+  var rowH = h / ch;
+
+  ctx.clearRect(0, 0, w, h);
+  for (var c = 0; c < ch; c++) {
+    var data = eeg.samples[c];
+    if (!data || data.length === 0) continue;
+    var y0 = c * rowH + rowH / 2;
+
+    var min = Infinity, max = -Infinity;
+    for (var i = 0; i < data.length; i++) {
+      if (data[i] < min) min = data[i];
+      if (data[i] > max) max = data[i];
+    }
+    var range = max - min || 1;
+
+    ctx.strokeStyle = 'hsl(' + ((c * 360 / ch) % 360) + ', 70%, 60%)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (var i = 0; i < data.length; i++) {
+      var x = (i / data.length) * w;
+      var y = y0 - ((data[i] - min) / range - 0.5) * rowH * 0.8;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+
+    ctx.fillStyle = '#666';
+    ctx.font = '10px sans-serif';
+    ctx.fillText('Ch' + (c + 1), 4, c * rowH + 12);
+  }
+}
+
+connect();
+</script>
+</body>
+</html>
