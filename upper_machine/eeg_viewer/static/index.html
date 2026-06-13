@@ -3,148 +3,285 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>earEEG Viewer</title>
+    <title>earEEG Acquisition</title>
     <link rel="stylesheet" href="/style.css">
   </head>
   <body>
-    <header>
-      <div>
-        <h1>earEEG Viewer</h1>
-        <p>16-channel LSL signal monitor</p>
-      </div>
-      <div class="status">
-        <span id="socketStatus" class="badge warning">WebSocket connecting</span>
-        <span id="proxyStatus" class="badge warning">Device unknown</span>
-        <span id="acqStatus" class="badge warning">Acquisition idle</span>
-        <span id="lslStatus" class="badge warning">LSL waiting</span>
-        <span id="micStatus" class="badge warning">MIC waiting</span>
-        <span><b id="sampleRate">250</b> Hz</span>
-        <span><b id="sampleCount">0</b> samples</span>
+    <!-- Top bar -->
+    <header id="topBar">
+      <span class="top-title">earEEG Acquisition</span>
+      <div class="top-badges">
+        <span id="lslStatus" class="badge warning">LSL --</span>
+        <span id="proxyStatus" class="badge warning">Device --</span>
+        <span id="fpsDisplay" class="badge">FPS --</span>
       </div>
     </header>
-    <main>
-      <section class="toolbar">
-        <label>Time window
-          <select id="windowSeconds">
-            <option value="2">2 s</option>
-            <option value="5" selected>5 s</option>
-            <option value="10">10 s</option>
-          </select>
-        </label>
-        <label>Amplitude
-          <select id="amplitudeMode">
-            <option value="auto">Auto</option>
-            <option value="50000">±50k</option>
-            <option value="250000">±250k</option>
-            <option value="1000000">±1m</option>
-          </select>
-        </label>
-        <label>EEG unit
-          <select id="eegUnit">
-            <option value="uV" selected>uV</option>
-            <option value="mV">mV</option>
-            <option value="V">V</option>
-            <option value="counts">counts</option>
-          </select>
-        </label>
-        <label>Range
-          <select id="eegRange"></select>
-        </label>
-        <button id="startAcqButton">Start acquisition</button>
-        <button id="stopAcqButton">Stop acquisition</button>
-        <button id="pauseButton">Pause</button>
-        <span id="detail">Waiting for EEG samples</span>
-      </section>
-      <section class="audio-toolbar">
-        <div id="audioDropZone" class="drop-zone">
-          Drop WAV here or <button id="chooseAudioButton" type="button">Choose file</button>
-          <input id="audioFileInput" type="file" accept=".wav,audio/wav" hidden>
-        </div>
-        <button id="playAudioButton">Play audio</button>
-        <button id="pauseAudioButton">Pause audio</button>
-        <button id="resumeAudioButton">Resume audio</button>
-        <button id="stopAudioButton">Stop audio</button>
-        <span id="audioStatus" class="badge warning">No audio selected</span>
-        <button id="monitorMicButton">Monitor MIC</button>
-        <button id="stopMonitorMicButton">Stop monitor</button>
-        <span id="micMonitorStatus" class="badge warning">MIC monitor off</span>
-      </section>
-      <section class="impedance-toolbar">
-        <label>Channels
-          <select id="impedanceChannels">
-            <option value="1-8" selected>Ch1-8</option>
-            <option value="1-16">Ch1-16</option>
-          </select>
-        </label>
-        <button id="startImpedanceButton">Measure impedance</button>
-        <button id="stopImpedanceButton">Stop impedance</button>
-        <span id="impedanceStatus" class="badge warning">Impedance idle</span>
-      </section>
-      <section id="impedanceGrid" class="impedance-grid"></section>
-      <section class="recording-toolbar">
-        <label>Record tag
-          <input id="recordingTag" type="text" placeholder="optional">
-        </label>
-        <button id="startRecordingButton">Start recording</button>
-        <button id="stopRecordingButton">Stop recording</button>
-        <span id="recordingStatus" class="badge warning">Recording idle</span>
-        <span id="recordingDetail">NPZ: eeg, mic, stimuli</span>
-      </section>
-      <section class="focus-panel">
-        <div class="focus-score-block">
-          <div id="focusScore" class="focus-score">--</div>
-          <div class="focus-score-label">Focus</div>
-        </div>
-        <div class="focus-info">
-          <div class="focus-state-row">
-            <span id="focusState" class="focus-state">waiting</span>
-            <span id="focusQuality" class="focus-quality">--</span>
+
+    <!-- Main layout -->
+    <div id="mainWrap">
+      <!-- Left panel: signals + focus -->
+      <div id="leftPanel">
+        <div id="eegSection">
+          <div class="signal-header">
+            <span class="signal-title">EEG Signal</span>
+            <span id="eegInfo" class="signal-info">-- ch -- Hz</span>
           </div>
-          <div id="focusReasons" class="focus-reasons"></div>
+          <canvas id="eegCanvas"></canvas>
+        </div>
+        <div id="micSection">
+          <div class="signal-header">
+            <span class="signal-title">Audio / MIC</span>
+            <span id="micInfo" class="signal-info">-- Hz</span>
+          </div>
+          <canvas id="micCanvas"></canvas>
+        </div>
+        <div id="focusSection">
+          <span id="focusScore" class="focus-score">--</span>
+          <span id="focusState" class="focus-state waiting">--</span>
+          <span id="focusQuality" class="focus-quality">Q:--</span>
           <div class="focus-bands">
             <div class="focus-band" data-band="delta">
+              <span class="focus-band-label">&delta;</span>
               <div class="focus-band-bar-bg"><div id="focusBarDelta" class="focus-band-bar"></div></div>
-              <span class="focus-band-label">δ</span>
               <span id="focusBandDelta" class="focus-band-value">--</span>
             </div>
             <div class="focus-band" data-band="theta">
+              <span class="focus-band-label">&theta;</span>
               <div class="focus-band-bar-bg"><div id="focusBarTheta" class="focus-band-bar"></div></div>
-              <span class="focus-band-label">θ</span>
               <span id="focusBandTheta" class="focus-band-value">--</span>
             </div>
             <div class="focus-band" data-band="alpha">
+              <span class="focus-band-label">&alpha;</span>
               <div class="focus-band-bar-bg"><div id="focusBarAlpha" class="focus-band-bar"></div></div>
-              <span class="focus-band-label">α</span>
               <span id="focusBandAlpha" class="focus-band-value">--</span>
             </div>
             <div class="focus-band" data-band="beta">
+              <span class="focus-band-label">&beta;</span>
               <div class="focus-band-bar-bg"><div id="focusBarBeta" class="focus-band-bar"></div></div>
-              <span class="focus-band-label">β</span>
               <span id="focusBandBeta" class="focus-band-value">--</span>
             </div>
             <div class="focus-band" data-band="gamma">
+              <span class="focus-band-label">&gamma;</span>
               <div class="focus-band-bar-bg"><div id="focusBarGamma" class="focus-band-bar"></div></div>
-              <span class="focus-band-label">γ</span>
               <span id="focusBandGamma" class="focus-band-value">--</span>
             </div>
           </div>
           <div class="focus-ratios">
-            <span>θ/β: <b id="focusThetaBeta">--</b></span>
-            <span>α/β: <b id="focusAlphaBeta">--</b></span>
+            <span>&theta;/&beta;: <b id="focusThetaBeta">--</b></span>
+            <span>&alpha;/&beta;: <b id="focusAlphaBeta">--</b></span>
           </div>
         </div>
-      </section>
-      <section class="plot-panel">
-        <canvas id="eegCanvas"></canvas>
-      </section>
-      <section class="mic-panel">
-        <div class="panel-title">
-          <span>MIC input</span>
-          <span id="micDetail">Waiting for MIC samples</span>
+      </div>
+
+      <!-- Right panel: controls -->
+      <div id="rightPanel">
+
+        <!-- Device -->
+        <div class="rp-section">
+          <div class="rp-header" data-toggle="deviceBody">
+            <span>Device</span><span class="rp-arrow">&#9660;</span>
+          </div>
+          <div id="deviceBody" class="rp-body">
+            <div class="rp-row">
+              <button id="startAcqButton" class="btn-primary btn-sm">Connect</button>
+              <button id="stopAcqButton" class="btn-danger btn-sm">Disconnect</button>
+            </div>
+            <div class="rp-row">
+              <span id="acqStatus" class="badge warning">Idle</span>
+            </div>
+            <div class="rp-row">
+              <span class="rp-label">LSL:</span>
+              <span id="lslStatusSide" class="badge warning">waiting</span>
+            </div>
+            <div class="rp-row">
+              <span class="rp-label">Battery:</span>
+              <span class="rp-mono">--</span>
+            </div>
+          </div>
         </div>
-        <canvas id="micCanvas"></canvas>
-      </section>
-    </main>
+
+        <!-- Channels -->
+        <div class="rp-section">
+          <div class="rp-header" data-toggle="channelsBody">
+            <span>Channels</span><span class="rp-arrow">&#9660;</span>
+          </div>
+          <div id="channelsBody" class="rp-body">
+            <div class="rp-row">
+              <button id="electrodeSetupBtn" class="btn-sm">Electrodes: Setup</button>
+            </div>
+            <div class="rp-row">
+              <button id="impedanceViewBtn" class="btn-sm">Impedance: View</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Filter Setup -->
+        <div class="rp-section">
+          <div class="rp-header" data-toggle="filterBody">
+            <span>Filter Setup</span><span class="rp-arrow">&#9660;</span>
+          </div>
+          <div id="filterBody" class="rp-body">
+            <div class="rp-row">
+              <span class="rp-label">HighPass:</span>
+              <select id="filterHighPass" class="rp-select">
+                <option value="0.5">0.5 Hz</option>
+                <option value="1" selected>1 Hz</option>
+                <option value="2">2 Hz</option>
+              </select>
+            </div>
+            <div class="rp-row">
+              <span class="rp-label">LowPass:</span>
+              <select id="filterLowPass" class="rp-select">
+                <option value="30">30 Hz</option>
+                <option value="45" selected>45 Hz</option>
+                <option value="70">70 Hz</option>
+              </select>
+            </div>
+            <div class="rp-row">
+              <span class="rp-label">Notch:</span>
+              <select id="filterNotch" class="rp-select">
+                <option value="0">Off</option>
+                <option value="50" selected>50 Hz</option>
+                <option value="60">60 Hz</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Display Setup -->
+        <div class="rp-section">
+          <div class="rp-header" data-toggle="displayBody">
+            <span>Display Setup</span><span class="rp-arrow">&#9660;</span>
+          </div>
+          <div id="displayBody" class="rp-body">
+            <div class="rp-row">
+              <span class="rp-label">TimeScale:</span>
+              <select id="displayTimeScale" class="rp-select">
+                <option value="2">2s</option>
+                <option value="5" selected>5s</option>
+                <option value="10">10s</option>
+              </select>
+            </div>
+            <div class="rp-row">
+              <span class="rp-label">VertScale:</span>
+              <select id="displayVertScale" class="rp-select">
+                <option value="50">50 uV</option>
+                <option value="100" selected>100 uV</option>
+                <option value="250">250 uV</option>
+                <option value="500">500 uV</option>
+                <option value="auto">Auto</option>
+              </select>
+            </div>
+            <div class="rp-row">
+              <span class="rp-label">Channels:</span>
+              <select id="displayChannels" class="rp-select">
+                <option value="selected" selected>Selected</option>
+                <option value="all">All 16</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Record / Playback -->
+        <div class="rp-section">
+          <div class="rp-header" data-toggle="recordBody">
+            <span>Record / Playback</span><span class="rp-arrow">&#9660;</span>
+          </div>
+          <div id="recordBody" class="rp-body">
+            <div class="rp-row rp-row-label">
+              <span class="rp-label">Dir:</span>
+              <span class="rp-mono rp-ellipsis">recordings/</span>
+            </div>
+            <div class="rp-row">
+              <button id="startRecordingButton" class="btn-primary btn-sm">EEG+MIC: Start</button>
+              <button id="stopRecordingButton" class="btn-danger btn-sm" disabled>Stop</button>
+            </div>
+            <div class="rp-row">
+              <span id="recordingStatus" class="badge warning">Idle</span>
+              <span id="recordingDetail" class="rp-detail"></span>
+            </div>
+            <div class="rp-sep"></div>
+            <div id="audioDropZone" class="rp-drop-zone">
+              Drop WAV or <button id="chooseAudioButton" type="button" class="btn-link">select</button>
+              <input id="audioFileInput" type="file" accept=".wav,audio/wav" hidden>
+            </div>
+            <div class="rp-row">
+              <button id="playAudioButton" class="btn-sm" disabled>Play</button>
+              <button id="pauseAudioButton" class="btn-sm" disabled>Pause</button>
+              <button id="resumeAudioButton" class="btn-sm" disabled>Resume</button>
+              <button id="stopAudioButton" class="btn-sm" disabled>Stop</button>
+            </div>
+            <div class="rp-row">
+              <span id="audioStatus" class="badge warning">No audio</span>
+            </div>
+            <div class="rp-sep"></div>
+            <div class="rp-row">
+              <span class="rp-label">MIC Monitor:</span>
+              <button id="monitorMicButton" class="btn-sm">On</button>
+              <button id="stopMonitorMicButton" class="btn-sm" disabled>Off</button>
+            </div>
+            <div class="rp-row">
+              <span id="micMonitorStatus" class="badge warning">Off</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Trigger -->
+        <div class="rp-section">
+          <div class="rp-header" data-toggle="triggerBody">
+            <span>Trigger</span><span class="rp-arrow">&#9660;</span>
+          </div>
+          <div id="triggerBody" class="rp-body">
+            <div class="rp-row">
+              <button class="btn-sm" disabled>Configure</button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Electrode Setup Modal -->
+    <div id="electrodeModal" class="modal-overlay" style="display:none">
+      <div class="modal-box">
+        <div class="modal-header">
+          <span>Electrode Selection</span>
+          <button id="electrodeModalClose" class="btn-link">&times;</button>
+        </div>
+        <div id="electrodeGrid" class="electrode-grid"></div>
+        <div class="modal-footer">
+          <button id="electrodeSelectAll" class="btn-sm">All</button>
+          <button id="electrodeSelectNone" class="btn-sm">None</button>
+          <button id="electrodeModalOk" class="btn-primary btn-sm">OK</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Impedance Modal -->
+    <div id="impedanceModal" class="modal-overlay" style="display:none">
+      <div class="modal-box modal-wide">
+        <div class="modal-header">
+          <span>Impedance Measurement</span>
+          <button id="impedanceModalClose" class="btn-link">&times;</button>
+        </div>
+        <div class="impedance-controls">
+          <select id="impedanceChannels" class="rp-select">
+            <option value="1-8" selected>Ch1-8</option>
+            <option value="1-16">Ch1-16</option>
+          </select>
+          <button id="startImpedanceButton" class="btn-primary btn-sm">Start</button>
+          <button id="stopImpedanceButton" class="btn-danger btn-sm" disabled>Stop</button>
+          <span id="impedanceStatus" class="badge warning">Idle</span>
+        </div>
+        <div id="impedanceGrid" class="impedance-grid"></div>
+      </div>
+    </div>
+
+    <!-- Status line (bottom) -->
+    <div id="statusBar">
+      <span id="detail">Ready</span>
+    </div>
+
     <script src="/viewer.js"></script>
   </body>
 </html>
