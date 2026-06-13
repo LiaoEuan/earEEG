@@ -20,8 +20,8 @@ class TestIterEEGWindows(unittest.TestCase):
         windows = list(iter_eeg_windows(eeg, sample_rate))
 
         # 2s = 500 samples, 0.5s = 125 samples
-        # starts: 0, 125, 250, 375 -> 4 windows
-        self.assertEqual(len(windows), 4)
+        # starts: 0, 125, 250, 375, 500 -> 5 windows
+        self.assertEqual(len(windows), 5)
 
     def test_window_shape(self):
         """Each window should have shape (channels, window_samples)."""

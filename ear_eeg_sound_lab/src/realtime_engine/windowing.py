@@ -48,7 +48,7 @@ def iter_eeg_windows(
         return
 
     start = 0
-    while start + window_samples < n_samples:
+    while start + window_samples <= n_samples:
         data = eeg[:, start : start + window_samples].astype(np.float64)
         yield EEGWindow(
             data=data,
