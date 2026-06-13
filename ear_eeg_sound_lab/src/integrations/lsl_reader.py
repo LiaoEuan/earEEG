@@ -55,6 +55,9 @@ class LSLStreamReader:
     def connect(self, timeout: float = 5.0) -> None:
         """Find and connect to the LSL stream.
 
+        Searches by stream name first. If no stream with that name is found,
+        falls back to searching by stream type.
+
         Args:
             timeout: Timeout in seconds for stream discovery.
 
@@ -72,8 +75,19 @@ class LSLStreamReader:
         )
 
         if not streams:
+            logger.info(
+                "Stream '%s' not found, trying type='%s'",
+                self._stream_name,
+                self._stream_type,
+            )
+            streams = pylsl.resolve_byprop(
+                "type", self._stream_type, timeout=timeout
+            )
+
+        if not streams:
             raise RuntimeError(
-                f"LSL stream '{self._stream_name}' not found within {timeout}s. "
+                f"LSL stream '{self._stream_name}' (type='{self._stream_type}') "
+                f"not found within {timeout}s. "
                 "Is upper_machine.lsl_proxy running with --lsl?"
             )
 
