@@ -84,6 +84,79 @@ class TestEEGRollingBuffer(unittest.TestCase):
 
         self.assertLessEqual(buffer.total_samples, 5.0 * 250.0 + 128)
 
+    def test_continuous_output_stability(self):
+        """Continuous 30s input should produce stable window output every 0.5s."""
+        buffer = EEGRollingBuffer(channels=4, sample_rate=250.0, capacity_seconds=10.0)
+
+        outputs = []
+        # Feed 30 seconds of data in 128-sample chunks
+        total_chunks = int(30.0 * 250.0 / 128)  # ~58 chunks
+        for i in range(total_chunks):
+            chunk = EEGChunk(
+                data=np.random.randn(128, 4),
+                timestamps=np.arange(128) / 250.0 + i * 128 / 250.0,
+                sample_rate=250.0,
+            )
+            buffer.append_chunk(chunk)
+            w = buffer.pop_next_window()
+            if w is not None:
+                outputs.append(w.start_sample)
+
+        # Should have emitted many windows (at least 20 for 30s with 0.5s step)
+        self.assertGreater(len(outputs), 20)
+
+        # Each output should advance by step_samples
+        for i in range(1, len(outputs)):
+            self.assertEqual(outputs[i] - outputs[i - 1], 125)  # 0.5s * 250Hz
+
+    def test_pop_consistent_with_has_window(self):
+        """has_window() True must not return None from pop_next_window()."""
+        buffer = EEGRollingBuffer(channels=4, sample_rate=250.0, capacity_seconds=10.0)
+
+        for i in range(60):
+            chunk = EEGChunk(
+                data=np.random.randn(128, 4),
+                timestamps=np.arange(128) / 250.0 + i * 128 / 250.0,
+                sample_rate=250.0,
+            )
+            buffer.append_chunk(chunk)
+
+            if buffer.has_window():
+                w = buffer.pop_next_window()
+                self.assertIsNotNone(
+                    w, f"has_window=True but pop returned None at chunk {i}"
+                )
+
+    def test_capacity_eviction_continues_output(self):
+        """Capacity eviction should not prevent further window output."""
+        buffer = EEGRollingBuffer(channels=4, sample_rate=250.0, capacity_seconds=5.0)
+
+        outputs_after_eviction = []
+        eviction_started = False
+
+        for i in range(100):
+            chunk = EEGChunk(
+                data=np.random.randn(128, 4),
+                timestamps=np.arange(128) / 250.0 + i * 128 / 250.0,
+                sample_rate=250.0,
+            )
+            buffer.append_chunk(chunk)
+
+            # After ~5 seconds, eviction should start
+            if i * 128 / 250.0 > 5.0:
+                eviction_started = True
+
+            if eviction_started:
+                w = buffer.pop_next_window()
+                if w is not None:
+                    outputs_after_eviction.append(w)
+
+        self.assertGreater(
+            len(outputs_after_eviction),
+            10,
+            "Should continue producing windows after eviction",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
