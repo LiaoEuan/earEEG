@@ -13,6 +13,7 @@ import numpy as np
 
 from ear_eeg_sound_lab.src.realtime_engine.pipeline import process_window
 from ear_eeg_sound_lab.src.realtime_engine.schemas import EEGWindow
+from ear_eeg_sound_lab.src.realtime_engine.state_estimator import estimate_state
 
 
 class FocusService:
@@ -104,6 +105,8 @@ class FocusService:
 
         output = process_window(window)
 
+        state = estimate_state(output.features, output.quality, output.focus)
+
         gbp = output.features.global_band_powers
         with self._lock:
             self._latest = {
@@ -120,4 +123,15 @@ class FocusService:
                 },
                 "thetaBetaRatio": round(output.features.theta_beta_ratio, 3),
                 "alphaBetaRatio": round(output.features.alpha_beta_ratio, 3),
+                "stateEstimate": {
+                    "focus": state.focus,
+                    "alertness": state.alertness,
+                    "relaxation": state.relaxation,
+                    "fatigue": state.fatigue,
+                    "affectArousal": state.affect_arousal,
+                    "affectValenceHint": state.affect_valence_hint,
+                    "confidence": state.confidence,
+                    "labels": state.labels,
+                    "experimental": state.experimental,
+                },
             }
