@@ -19,6 +19,7 @@ from urllib import error, request
 from urllib.parse import urlparse
 
 from .eeg_buffer import EEGBuffer
+from .focus_service import FocusService
 from .impedance_service import ImpedanceService
 from .lsl_reader import LSLReader
 from .recording_service import RecordingService
@@ -39,6 +40,7 @@ class ViewerHandler(BaseHTTPRequestHandler):
     mic_reader: LSLReader
     impedance: ImpedanceService
     recorder: RecordingService
+    focus_service: FocusService
     proxy_url: str
 
     def do_GET(self) -> None:
@@ -177,6 +179,7 @@ class ViewerHandler(BaseHTTPRequestHandler):
                         "error": self.mic_reader.last_error,
                         "samples": mic_samples[:, 0].tolist(),
                     },
+                    "focus": self.focus_service.get_focus(),
                 }, separators=(",", ":")).encode("utf-8")
                 self.wfile.write(_websocket_frame(payload))
                 self.wfile.flush()
@@ -308,9 +311,11 @@ def main() -> None:
     ViewerHandler.proxy_url = args.proxy_url.rstrip("/")
     ViewerHandler.impedance = ImpedanceService(eeg_buffer, ViewerHandler.proxy_url)
     ViewerHandler.recorder = recorder
+    ViewerHandler.focus_service = FocusService(eeg_buffer, sample_rate=SAMPLE_RATE)
     server = ThreadingHTTPServer((args.host, args.port), ViewerHandler)
     eeg_reader.start()
     mic_reader.start()
+    ViewerHandler.focus_service.start()
 
     stopping = threading.Event()
 
@@ -325,6 +330,7 @@ def main() -> None:
     try:
         server.serve_forever()
     finally:
+        ViewerHandler.focus_service.stop()
         eeg_reader.stop()
         mic_reader.stop()
         server.server_close()
