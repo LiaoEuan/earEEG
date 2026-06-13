@@ -1,6 +1,13 @@
 import struct
 import unittest
 
+from upper_machine.common.eeg_units import (
+    adc_volts_per_count,
+    decode_openbci_24bit_count,
+    decode_openbci_eeg_counts,
+    decode_openbci_eeg_uv,
+    openbci_counts_to_uv,
+)
 from upper_machine.common.protocol import (
     EEG_DATA_BYTES,
     IMU_PAYLOAD_BYTES,
@@ -41,6 +48,23 @@ class ProtocolTest(unittest.TestCase):
         parsed = FrameParser().feed(frame)
         self.assertEqual(len(parsed), 1)
         self.assertIsNone(parse_sensor_data(parsed[0]))
+
+    def test_openbci_signed_24bit_decode(self):
+        self.assertEqual(decode_openbci_24bit_count(bytes.fromhex("000001")), 1)
+        self.assertEqual(decode_openbci_24bit_count(bytes.fromhex("7fffff")), (1 << 23) - 1)
+        self.assertEqual(decode_openbci_24bit_count(bytes.fromhex("800000")), -(1 << 23))
+        self.assertEqual(decode_openbci_24bit_count(bytes.fromhex("ffffff")), -1)
+
+    def test_openbci_counts_to_microvolts(self):
+        full_scale_uv = openbci_counts_to_uv((1 << 23) - 1, gain=24.0)
+        self.assertAlmostEqual(full_scale_uv, 187500.0, places=6)
+        self.assertAlmostEqual(adc_volts_per_count(24.0) * 1e6, 0.022351744455, places=12)
+
+    def test_decode_openbci_eeg_uv_uses_active_channels(self):
+        raw = bytes.fromhex("000001 ffffff 000002").replace(b" ", b"")
+        self.assertEqual(decode_openbci_eeg_counts(raw, 2), [1, -1])
+        uv = decode_openbci_eeg_uv(raw, 2, gain=24.0)
+        self.assertAlmostEqual(uv[0], -uv[1], places=12)
 
 
 if __name__ == "__main__":

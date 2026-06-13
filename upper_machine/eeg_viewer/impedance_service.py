@@ -58,7 +58,7 @@ class ImpedanceService:
                 daemon=True,
             )
             self._thread.start()
-            return {"ok": True, "status": self.status()}
+        return {"ok": True, "status": self.status()}
 
     def stop(self) -> dict:
         self._stop.set()

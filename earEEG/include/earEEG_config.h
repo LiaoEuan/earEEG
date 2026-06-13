@@ -64,6 +64,10 @@
 #define EEG_BYTES_PER_SAMPLE 3      // 24-bit
 #define EEG_FRAME_BYTES     (EEG_CHANNELS_MAX * EEG_BYTES_PER_SAMPLE)
 
+// Set to 1 when an OpenBCI Daisy board is attached and enabled. Daisy packets
+// alternate main-board channels 1-8 and Daisy channels 9-16.
+#define OPENBCI_DAISY_MODE  1
+
 // OpenBCI UART
 #define OPENBCI_BAUDRATE    115200
 #define OPENBCI_UART_NUM    UART_NUM_1

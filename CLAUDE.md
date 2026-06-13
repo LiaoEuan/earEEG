@@ -1,123 +1,274 @@
-# CLAUDE.md — earEEG
+﻿# CLAUDE.md — earEEG Repository Guide
 
-## 项目概述
+This file is the root guidance for agents working in:
 
-ESP32 EEG 耳机工程项目，包含固件和上位机。
+`E:\yuan_space\10_projects\earEEG`
 
-```
+The repository contains three related but separate layers:
+
+```text
 earEEG/
-├── earEEG/            # ESP32 固件 (C, PlatformIO)
-│   ├── include/       # protocol.h, earEEG_config.h
-│   └── src/           # protocol.c, uart_eeg.c
-├── upper_machine/     # 上位机 (Python)
-│   ├── common/        # 协议解析、EEG 单位转换
-│   ├── lsl_proxy/     # TCP 客户端 + LSL 发布 + 控制 API
-│   ├── eeg_viewer/    # HTTP/WebSocket 浏览器查看器
-│   └── impedance/     # 阻抗计算
-├── recordings/        # 实验数据 (.npz)
-└── ear_eeg_sound_lab/ # 声音实验
+  earEEG/                  # ESP32-S3 firmware, C / ESP-IDF / PlatformIO
+  upper_machine/           # Existing PC bridge, Python, LSL, browser viewer
+  ear_eeg_sound_lab/       # New sound-EEG application and R&D workspace
+  recordings/              # Local NPZ session data, do not commit casually
 ```
 
-## 开发环境速查
+## Current Project Direction
+
+The current product direction is a sound-EEG closed-loop system:
+
+```text
+real or simulated earEEG device
+  -> upper_machine.lsl_proxy
+  -> LSL streams + local control API
+  -> ear_eeg_sound_lab realtime engine
+  -> visualization, music policy, session summary, LLM report
+```
+
+The next implementation stage is **not UI-first**. Build the first version of the application engine:
+
+```text
+NPZ / simulated stream
+  -> EEG windowing
+  -> preprocessing
+  -> band-power features
+  -> signal quality
+  -> focus estimate
+  -> structured output
+```
+
+For work inside `ear_eeg_sound_lab/`, also read:
+
+- `ear_eeg_sound_lab/CLAUDE.md`
+- `ear_eeg_sound_lab/docs/architecture.md`
+- `ear_eeg_sound_lab/docs/data_contracts.md`
+- `ear_eeg_sound_lab/docs/simulated_device.md`
+- `ear_eeg_sound_lab/docs/roadmap.md`
+
+For work inside `upper_machine/`, also read:
+
+- `upper_machine/DEVELOPMENT_GUIDE.md`
+
+## Layer Responsibilities
+
+### `earEEG/` firmware
+
+Owns hardware-facing logic:
+
+- Wi-Fi AP / STA setup;
+- TCP server;
+- OpenBCI UART parsing;
+- WM8960 audio I/O;
+- IMU polling;
+- binary protocol frame construction.
+
+Change firmware only when the device protocol, sample timing, sensor behavior, or hardware pins need to change.
+
+### `upper_machine/` bridge
+
+Owns the stable PC-side bridge:
+
+- `common/protocol.py`: protocol parser, CRC, sensor payload parsing;
+- `common/eeg_units.py`: OpenBCI/ADS1299 counts and uV conversion;
+- `lsl_proxy/`: the only normal TCP owner for the device;
+- `eeg_viewer/`: current browser viewer and recording flow;
+- `impedance/`: impedance math and command helpers.
+
+Do not put product logic, recommendation logic, or focus-model logic into `lsl_proxy`.
+
+### `ear_eeg_sound_lab/` application
+
+Owns new product work:
+
+- simulated device for hardware-free development;
+- LSL / NPZ integrations;
+- realtime EEG preprocessing;
+- feature extraction;
+- signal quality;
+- focus estimate;
+- music recommendation and adaptive switching;
+- session summaries;
+- report generation;
+- future dashboard.
+
+This layer should consume LSL streams and the proxy control API. It should not open a second normal TCP connection to the ESP32.
+
+## Hard Rules
+
+1. `lsl_proxy` is the only normal TCP owner.
+   - Do not let viewer, app code, recorders, or experiments connect directly to ESP32 in normal operation.
+   - Exception: the protocol-level simulated device accepts TCP from `lsl_proxy` for offline development.
+
+2. Protocol changes must be full-chain changes.
+   - Firmware, `upper_machine/common/protocol.py`, LSL outlet, viewer, recording, tests, and docs must stay aligned.
+
+3. EEG raw payload is OpenBCI signed 24-bit big-endian.
+   - Never parse EEG raw slots as little-endian.
+
+4. Be explicit about EEG units.
+   - Current streams and recordings may be raw counts, not uV.
+   - Do not label values as uV unless conversion is actually applied.
+
+5. Keep `common/protocol.py` small and dependency-light.
+   - It must not depend on LSL, HTTP, UI, numpy, or product logic.
+
+6. Do not make medical or clinical claims.
+   - The first product uses algorithmic estimates such as focus score and signal quality.
+   - Reports must separate measured facts, estimates, recommendations, and limitations.
+
+7. Do not commit generated data by accident.
+   - Avoid committing `.venv/`, `.pio/`, `__pycache__/`, large `recordings/`, local music, and generated reports.
+
+## Development Commands
+
+Run commands from the repository root:
 
 ```powershell
-# 运行上位机（在项目根目录执行）
-uv run --project upper_machine python -m upper_machine.lsl_proxy.main --help
-uv run --project upper_machine python -m upper_machine.eeg_viewer.main --help
-
-# 运行全部测试
-uv run --project upper_machine python -m unittest discover -s upper_machine -p "test_*.py"
-
-# 运行单个测试文件
-uv run --project upper_machine python -m unittest upper_machine.test_protocol
+cd E:\yuan_space\10_projects\earEEG
 ```
 
-Python 要求：>=3.14（见 `upper_machine/pyproject.toml`）
+Upper-machine help:
 
-## 核心原则（红线）
+```powershell
+uv run --project upper_machine python -m upper_machine.lsl_proxy.main --help
+uv run --project upper_machine python -m upper_machine.eeg_viewer.main --help
+```
 
-1. **lsl_proxy 独占 TCP 连接** — 不要让 viewer、调试脚本直接连 ESP32
-2. **协议层保持小而稳定** — `common/protocol.py` 不依赖 LSL、HTTP、UI 或 numpy
-3. **任何单位/采样率/通道数变化必须全链路同步** — 固件 → protocol.py → LSL → viewer → 阻抗 → NPZ → 测试 → 文档
-4. **CRC 必须与固件一致** — `crc16_ibm()` 初值 0xFFFF，表驱动实现
-5. **EEG raw 是 big-endian signed 24-bit** — 不能用 little-endian 解析
+Upper-machine tests:
 
-## 始终生效的 Skills
+```powershell
+uv run --project upper_machine python -m unittest discover -s upper_machine -p "test_*.py"
+```
 
-以下规范在每次会话中自动生效，无需手动调用：
+Sound-lab tests:
 
-### 代码规范（python-expert）
-- 函数签名必须有类型提示
-- 使用 dataclass 而非裸 dict
-- docstring 用 Google 格式
-- 遵循 PEP 8
+```powershell
+python -m unittest discover -s ear_eeg_sound_lab\tests -p "test_*.py"
+```
 
-### 设计原则（karpathy-guidelines）
-- 不加没有被要求的功能
-- 不为单次使用写抽象
-- 改动时只碰必须碰的代码
-- 假设要显式说出来，不确定就问
+Simulated device:
 
-### 调试规则（systematic-debugging）
-- **遇到任何 bug、测试失败、异常行为，先找根因再修**
-- 禁止跳过根因分析直接修
-- 流程：理解问题 → 收集信息 → 形成假设 → 验证假设 → 确认根因 → 修复 → 验证
+```powershell
+python -m ear_eeg_sound_lab.src.simulated_device --auto-start --stats
+```
 
-### 开发规则（test-driven-development）
-- **协议/格式/采样率/通道数变更，先写测试再写实现**
-- 先看测试失败，再写最少代码让它通过
-- 新功能、bug 修复、重构、行为变更都适用
+Proxy against simulated device:
 
-### 验证规则（verification-before-completion）
-- **声称"完成"/"修复"/"通过"之前，必须跑验证命令并拿到输出**
-- 没跑过测试就不能说通过
-- 证据优先于断言
+```powershell
+uv run --project upper_machine python -m upper_machine.lsl_proxy.main --host 127.0.0.1 --port 8889 --lsl --start --stats
+```
 
-## 自动触发规则
+Proxy against real AP-mode device:
 
-**AI 必须在以下条件满足时自动执行对应 skill，不需要用户手动调用。**
+```powershell
+uv run --project upper_machine python -m upper_machine.lsl_proxy.main --host 192.168.4.1 --port 8888 --lsl --start --stats
+```
 
-| 条件 | 自动执行 | 做什么 |
-|------|---------|--------|
-| 开始任何新功能或修改行为 | **brainstorming** | 先理解项目上下文，逐个问澄清问题，提出 2-3 个方案并推荐，获得用户批准后才能动手写代码 |
-| 协议/格式/采样率/通道数/帧类型/命令 ID 变更 | **writing-plans** | 自动生成实施计划，列出所有需要同步修改的文件和检查清单，用户确认后执行 |
-| 遇到 bug / 测试失败 / 异常行为 | **systematic-debugging** | 进入根因分析流程，禁止直接给修复方案 |
-| 实现任何功能或修复 | **test-driven-development** | 先写测试，看它失败，再写实现 |
-| 准备声称"完成"或"通过" | **verification-before-completion** | 跑 `uv run --project upper_machine python -m unittest discover` 并展示输出 |
-| 用户说"整理"/"同步"/"收尾"/"梳理"/"这个阶段做完了" | **neat-freak** | 审查并同步 CLAUDE.md、DEVELOPMENT_GUIDE.md、README.md、docs/ 与代码一致；删除过期内容；合并重复；检查尺寸膨胀 |
-| 完成大功能 / 修改了 3+ 个文件 / 准备合并 | **requesting-code-review** | 派 code-reviewer 子 agent 做安全/性能/正确性审查 |
+## Current Implementation Plan For Agents
 
-## 按需调用 Skills（备查）
+When implementing the next stage, work in this order:
 
-需要时通过 `/name` 手动调用：
+1. `ear_eeg_sound_lab/src/integrations/npz_loader.py`
+   - Load existing `.npz` sessions.
+   - Normalize EEG shape to `(channels, samples)`.
+   - Do not change units.
 
-| Skill | 何时用 |
-|-------|--------|
-| `/project-planner` | 规划 P0-P3 路线图、拆解任务、估算时间 |
-| `/frontend-design` | 改 viewer 浏览器 UI 设计 |
-| `/simplify` | 重构已有代码、降低复杂度 |
-| `/code-reviewer` | 安全审查（如控制 API 鉴权问题） |
-| `/neat-freak` | 也可以手动触发文档同步 |
+2. `ear_eeg_sound_lab/src/realtime_engine/schemas.py`
+   - Define dataclasses for windows, features, quality, focus, and engine output.
 
-## 协议变更检查清单
+3. `ear_eeg_sound_lab/src/realtime_engine/windowing.py`
+   - Slice EEG into fixed windows, initially 2 seconds with 0.5 second step.
 
-修改 TCP 帧/payload/采样率/通道数/命令 ID 时，必须同步修改以下所有位置：
+4. `ear_eeg_sound_lab/src/realtime_engine/preprocessing.py`
+   - First version: float conversion, NaN/Inf cleanup, per-channel demean.
+   - Do not claim clinical-grade filtering.
 
-1. 固件 `earEEG/include/protocol.h` + `earEEG/src/protocol.c`
-2. 固件 `earEEG/include/earEEG_config.h`（采样率/通道数）
-3. 上位机 `upper_machine/common/protocol.py`
-4. 测试 payload builder
-5. `upper_machine/lsl_proxy/lsl_outlet.py` 的 LSL stream info
-6. `upper_machine/eeg_viewer/main.py` 的常量
-7. `upper_machine/eeg_viewer/static/viewer.js` 的前端常量
-8. `upper_machine/eeg_viewer/recording_service.py` 的采样率和 NPZ 元数据
-9. `upper_machine/impedance/core.py` 的默认参数
-10. 所有相关测试
-11. `upper_machine/DEVELOPMENT_GUIDE.md` 对应章节
-12. 用真实设备抓一帧作为 golden frame 加入测试
+5. `ear_eeg_sound_lab/src/realtime_engine/features.py`
+   - FFT/Hann-based band power.
+   - Bands: delta, theta, alpha, beta, gamma.
+   - Output ratios such as theta/beta and alpha/beta.
 
-## 深入文档
+6. `ear_eeg_sound_lab/src/realtime_engine/quality.py`
+   - Detect flatline, high amplitude, bad channels, and poor windows.
+   - Output score in `0.0..1.0`.
 
-详细协议、架构、排查指南见：
+7. `ear_eeg_sound_lab/src/realtime_engine/focus.py`
+   - Interpretable heuristic, not ML.
+   - Output score in `0..100`, state label, quality, and reason codes.
 
-- `upper_machine/DEVELOPMENT_GUIDE.md` — 完整交接文档（协议、API、NPZ 格式、排查、路线图）
+8. `ear_eeg_sound_lab/src/realtime_engine/pipeline.py`
+   - Chain all processing steps.
+
+9. `ear_eeg_sound_lab/src/storage/session_summary.py`
+   - Summarize many engine outputs for later reports.
+
+Every module must have focused unit tests in `ear_eeg_sound_lab/tests/`.
+
+## Code Quality Rules
+
+- Prefer dataclasses for structured data.
+- Use type hints for public functions.
+- Public functions need docstrings describing:
+  - input shape;
+  - output shape;
+  - unit assumptions;
+  - whether the function changes units.
+- Use numpy for first-version signal processing.
+- Keep dependencies minimal.
+- Avoid premature abstractions.
+- Keep comments short and useful, especially around FFT, quality scoring, and focus heuristics.
+- Clamp scores to their documented ranges.
+- Sanitize NaN/Inf at module boundaries.
+
+## Testing And Completion Rules
+
+Before saying work is complete:
+
+1. Run the relevant unit tests.
+2. Report the exact command used.
+3. Report whether it passed or failed.
+4. If tests cannot be run, say why.
+
+For protocol, sample-rate, channel-count, frame-type, command-ID, or unit changes, tests are mandatory.
+
+## Protocol Change Checklist
+
+When changing TCP frame format, payload layout, sample rates, channel counts, frame types, command IDs, or EEG units, update all relevant places:
+
+1. `earEEG/include/protocol.h`
+2. `earEEG/src/protocol.c`
+3. `earEEG/include/earEEG_config.h`
+4. `upper_machine/common/protocol.py`
+5. `upper_machine/common/eeg_units.py` if unit conversion changes
+6. test payload builders
+7. `upper_machine/lsl_proxy/lsl_outlet.py`
+8. `upper_machine/eeg_viewer/main.py`
+9. `upper_machine/eeg_viewer/static/viewer.js`
+10. `upper_machine/eeg_viewer/recording_service.py`
+11. `upper_machine/impedance/core.py`
+12. `ear_eeg_sound_lab/src/simulated_device/`
+13. `ear_eeg_sound_lab/docs/data_contracts.md`
+14. `upper_machine/DEVELOPMENT_GUIDE.md`
+15. related tests
+
+If possible, add a real-device or simulator golden frame test.
+
+## Review Before Large Changes
+
+Before large changes, inspect current git status and avoid overwriting unrelated user work:
+
+```powershell
+git status --short
+```
+
+If the task touches 3+ files or a shared contract, provide a short plan before editing.
+
+## Documentation Expectations
+
+When behavior changes, update docs near the behavior:
+
+- root `CLAUDE.md` for repository-wide rules;
+- `upper_machine/DEVELOPMENT_GUIDE.md` for bridge/protocol/viewer behavior;
+- `ear_eeg_sound_lab/CLAUDE.md` for application-layer rules;
+- `ear_eeg_sound_lab/docs/*.md` for product, architecture, data contracts, and roadmap.

@@ -14,6 +14,10 @@ import time
 
 from .control_server import ControlServer, ProxyController, ProxyStatus
 from .tcp_client import TCPClient
+from upper_machine.common.eeg_units import (
+    decode_openbci_eeg_counts,
+    openbci_counts_to_uv,
+)
 from upper_machine.common.protocol import SensorData
 
 
@@ -31,6 +35,10 @@ def main():
                         help=argparse.SUPPRESS)
     parser.add_argument("--verbose", "-v", action="store_true",
                         help="print every frame to stdout")
+    parser.add_argument("--eeg-unit", choices=["uv", "counts", "both"], default="uv",
+                        help="EEG unit for verbose TCP debug output (default: uv)")
+    parser.add_argument("--eeg-gain", type=float, default=24.0,
+                        help="OpenBCI/ADS1299 EEG gain for count-to-uV conversion (default: 24)")
     parser.add_argument("--stats", "-s", action="store_true",
                         help="print periodic statistics")
     parser.add_argument("--lsl", action="store_true",
@@ -108,7 +116,7 @@ def main():
 
         # Console output
         if args.verbose:
-            _print_sensor(s)
+            _print_sensor(s, eeg_unit=args.eeg_unit, eeg_gain=args.eeg_gain)
 
         # LSL push
         if lsl_manager:
@@ -220,13 +228,21 @@ def _oneshot_cmd(host: str, port: int, cmd_str: str):
     print("[cmd] done")
 
 
-def _print_sensor(s: SensorData):
+def _print_sensor(s: SensorData, eeg_unit: str = "uv", eeg_gain: float = 24.0):
     """Pretty-print one sensor frame to console."""
-    eeg_vals = []
-    for ch in range(min(s.active_channels, 8)):
-        off = ch * 3
-        raw24 = int.from_bytes(s.eeg_raw[off:off + 3], byteorder='big', signed=True)
-        eeg_vals.append(f"{raw24:7d}")
+    printed_channels = min(s.active_channels, 8)
+    counts = decode_openbci_eeg_counts(s.eeg_raw, printed_channels)
+    if eeg_unit == "counts":
+        eeg_vals = [f"{raw24:7d}" for raw24 in counts]
+        eeg_label = "counts"
+    elif eeg_unit == "both":
+        eeg_uv = openbci_counts_to_uv(counts, gain=eeg_gain)
+        eeg_vals = [f"{raw24:7d}/{uv:8.2f}" for raw24, uv in zip(counts, eeg_uv)]
+        eeg_label = "counts/uV"
+    else:
+        eeg_uv = openbci_counts_to_uv(counts, gain=eeg_gain)
+        eeg_vals = [f"{uv:8.2f}" for uv in eeg_uv]
+        eeg_label = "uV"
     eeg_str = " ".join(eeg_vals) if eeg_vals else "--"
 
     mic_vals = []
@@ -235,8 +251,10 @@ def _print_sensor(s: SensorData):
         mic_vals.append(f"{val:6d}")
     mic_str = " ".join(mic_vals) if mic_vals else "--"
 
+    channel_label = (f"{s.active_channels:2d}ch" if printed_channels == s.active_channels
+                     else f"{printed_channels}/{s.active_channels}ch")
     print(f"[SENSOR] seq={s.seq_id:4d} ts={s.timestamp:13d} | "
-          f"EEG[{s.active_channels:2d}ch] {eeg_str} | "
+          f"EEG[{channel_label} {eeg_label}] {eeg_str} | "
           f"MIC {mic_str} | "
           f"QUAT w={s.quat_w:.3f} x={s.quat_x:.3f} y={s.quat_y:.3f} z={s.quat_z:.3f}")
 

@@ -137,7 +137,11 @@ static void parse_eeg_bytes(const uint8_t *data, size_t len)
                 continue;
             }
 
-            store_daisy_packet(stream_buf);
+            if (OPENBCI_DAISY_MODE) {
+                store_daisy_packet(stream_buf);
+            } else {
+                store_eeg_frame(stream_buf + 2, 8);
+            }
             s_last_sample_number = sample_number;
             s_have_sample_number = true;
             stream_len -= OPENBCI_FRAME_SIZE;

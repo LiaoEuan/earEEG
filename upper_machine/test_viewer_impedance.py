@@ -9,6 +9,27 @@ from upper_machine.eeg_viewer.impedance_service import ImpedanceService
 
 
 class ViewerImpedanceTest(unittest.TestCase):
+    def test_start_returns_status_without_deadlocking(self):
+        class FastService(ImpedanceService):
+            def _run(self, channels, duration):
+                with self._lock:
+                    self._running = False
+
+        buffer = EEGBuffer(channels=16, sample_rate=250)
+        service = FastService(buffer, "http://127.0.0.1:8787")
+        result_holder = {}
+
+        def start_service():
+            result_holder["result"] = service.start("1", duration=0.5)
+
+        thread = threading.Thread(target=start_service, daemon=True)
+        thread.start()
+        thread.join(timeout=1.0)
+
+        self.assertFalse(thread.is_alive(), "start() deadlocked while building status")
+        self.assertTrue(result_holder["result"]["ok"])
+        self.assertIn("status", result_holder["result"])
+
     def test_collect_channel_uses_fresh_lsl_buffer_samples(self):
         buffer = EEGBuffer(channels=16, sample_rate=250)
         service = ImpedanceService(buffer, "http://127.0.0.1:8787")

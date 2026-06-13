@@ -76,7 +76,7 @@ tests/
 └── test_state_provider.py     # 7 tests
 ```
 
-**总计：68 tests passed, 2 skipped (real NPZ not in worktree)**
+**总计：74 tests passed**
 
 ## 四、核心数据结构
 
@@ -122,9 +122,10 @@ class FocusEstimate:
 ## 六、设计文档
 
 - `ear_eeg_sound_lab/docs/superpowers/specs/2026-06-14-realtime-engine-v1-design.md` — M1 设计
-- `ear_eeg_sound_lab/docs/superpowers/specs/2026-06-14-realtime-runner-m2-design.md` — M2 设计
 - `ear_eeg_sound_lab/docs/superpowers/plans/2026-06-14-realtime-engine-v1.md` — M1 实施计划
 - `ear_eeg_sound_lab/docs/superpowers/plans/2026-06-14-realtime-runner-m2.md` — M2 实施计划
+
+说明：M2 当前以实施计划和完成报告作为设计/验收依据，未单独维护 runner design spec。
 
 ## 七、使用方式
 

@@ -102,7 +102,6 @@ class TestDashboardStateProvider(unittest.TestCase):
         self.assertIsInstance(state["timestamp"], float)
 
     def test_state_schema(self):
-        """验证 get_state() 返回的完整 schema 结构。"""
         provider = DashboardStateProvider(channels=4, sample_rate=250.0)
         output = _make_engine_output(n_channels=4)
         provider.update(output)
