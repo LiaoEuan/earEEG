@@ -610,6 +610,35 @@ function setupElectrodeModal() {
     }
     modal.style.display = "none";
   };
+  // Import config file
+  document.getElementById("electrodeImportBtn").onclick = () => {
+    document.getElementById("electrodeFileInput").click();
+  };
+  document.getElementById("electrodeFileInput").onchange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const config = JSON.parse(text);
+      if (config.channels && config.channels.length > 0) {
+        electrodeConfig = config;
+        for (let i = 0; i < Math.min(config.channels.length, CHANNELS); i++) {
+          electrodeSelection[i] = !!config.channels[i].enabled;
+        }
+        // Refresh modal checkboxes and labels
+        for (let i = 0; i < CHANNELS; i++) {
+          const cb = document.getElementById(`elec_${i}`);
+          const lbl = document.querySelector(`label[for="elec_${i}"]`);
+          if (cb) cb.checked = electrodeSelection[i];
+          if (lbl) lbl.textContent = config.channels[i]?.name || `CH${String(i + 1).padStart(2, "0")}`;
+        }
+        console.log("[electrode] imported config:", config.name);
+      }
+    } catch (err) {
+      console.error("[electrode] failed to import config:", err);
+    }
+    e.target.value = ""; // reset file input
+  };
   modal.addEventListener("click", e => { if (e.target === modal) modal.style.display = "none"; });
 }
 
