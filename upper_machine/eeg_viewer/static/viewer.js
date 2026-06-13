@@ -513,6 +513,53 @@ function drawMic() {
   requestAnimationFrame(drawMic);
 }
 
+const bandKeys = ["delta", "theta", "alpha", "beta", "gamma"];
+
+function updateFocus(focus) {
+  if (!focus) return;
+  const score = focus.score;
+  const state = focus.state || "waiting";
+  document.getElementById("focusScore").textContent =
+    score != null ? String(score) : "--";
+  const stateEl = document.getElementById("focusState");
+  stateEl.textContent = state;
+  stateEl.className = `focus-state ${state}`;
+  document.getElementById("focusQuality").textContent =
+    focus.quality != null ? `${(focus.quality * 100).toFixed(0)}%` : "--";
+
+  // Reasons
+  const reasonsEl = document.getElementById("focusReasons");
+  reasonsEl.innerHTML = "";
+  if (Array.isArray(focus.reasons)) {
+    for (const reason of focus.reasons) {
+      const tag = document.createElement("span");
+      tag.className = "focus-reason-tag";
+      tag.textContent = reason.replace(/_/g, " ");
+      reasonsEl.appendChild(tag);
+    }
+  }
+
+  // Band powers
+  const bp = focus.bandPowers || {};
+  let maxPower = 1;
+  for (const key of bandKeys) {
+    if (bp[key] != null && bp[key] > maxPower) maxPower = bp[key];
+  }
+  for (const key of bandKeys) {
+    const val = bp[key];
+    document.getElementById(`focusBand${key[0].toUpperCase()}${key.slice(1)}`).textContent =
+      val != null ? val.toFixed(1) : "--";
+    document.getElementById(`focusBar${key[0].toUpperCase()}${key.slice(1)}`).style.width =
+      val != null ? `${(val / maxPower * 100).toFixed(0)}%` : "0%";
+  }
+
+  // Ratios
+  document.getElementById("focusThetaBeta").textContent =
+    focus.thetaBetaRatio != null ? focus.thetaBetaRatio.toFixed(2) : "--";
+  document.getElementById("focusAlphaBeta").textContent =
+    focus.alphaBetaRatio != null ? focus.alphaBetaRatio.toFixed(2) : "--";
+}
+
 function connect() {
   const scheme = location.protocol === "https:" ? "wss" : "ws";
   const socket = new WebSocket(`${scheme}://${location.host}/ws`);
@@ -547,6 +594,7 @@ function connect() {
     if (Array.isArray(mic.samples)) {
       queueMicAudio(mic.samples, mic.sampleRate);
     }
+    updateFocus(frame.focus);
   };
 }
 
