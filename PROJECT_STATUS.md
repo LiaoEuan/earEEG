@@ -1,8 +1,9 @@
 # earEEG 项目当前状态报告
 
-**日期：** 2026-06-14
-**分支：** master (已合并 worktree-realtime-engine-v1)
+**日期：** 2026-06-14（最后更新）
+**分支：** master
 **GitHub：** https://github.com/LiaoEuan/earEEG
+**最新 Commit：** 90d653e
 
 ---
 
@@ -20,9 +21,10 @@ earEEG/
 │   │   ├── main.py              # HTTP + WebSocket 服务
 │   │   ├── eeg_buffer.py        # 线程安全滚动缓存
 │   │   ├── lsl_reader.py        # LSL 输入线程
+│   │   ├── focus_service.py     # 后台专注度计算（pipeline 集成）
 │   │   ├── recording_service.py # NPZ 录制
 │   │   ├── impedance_service.py # 阻抗测量
-│   │   └── static/              # index.html, style.css, viewer.js
+│   │   └── static/              # index.html, style.css, viewer.js（含 focus panel）
 │   └── impedance/               # 阻抗计算
 ├── ear_eeg_sound_lab/           # 声音-EEG 闭环应用（本次开发重点）
 │   ├── src/
@@ -163,6 +165,7 @@ EEG 数据 → 窗口切片(2s/0.5s) → 预处理(counts→uV + demean + 带通
 **功能：**
 - 16 通道 EEG 波形
 - MIC 波形
+- **专注度分数 + 状态 + 频段功率（已集成 FocusService）**
 - LSL 连接状态
 - Start/Stop acquisition
 - WAV 上传、播放、暂停、恢复、停止
@@ -171,6 +174,13 @@ EEG 数据 → 窗口切片(2s/0.5s) → 预处理(counts→uV + demean + 带通
 - 阻抗测量
 - 单位切换（uV/mV/V/counts）
 - 幅值范围选择
+
+**Focus 集成：**
+- `focus_service.py`：后台线程每 0.5s 从 EEGBuffer 取 2s 快照跑 pipeline
+- `main.py`：WebSocket payload 新增 `focus` 字段
+- `viewer.js`：`updateFocus()` 函数更新 focus panel
+- `index.html`：新增 focus panel（分数 + 状态 + 原因 + 频段柱状图 + ratio）
+- `style.css`：focus panel 样式（状态颜色、频段柱状图、原因标签）
 
 **启动方式：**
 ```powershell
@@ -217,22 +227,25 @@ python -m ear_eeg_sound_lab.src.web_app.server --port 8766
 | 音频播放控制 | ✅ | ❌ |
 | 阻抗测量 | ✅ | ❌ |
 | 单位切换 | ✅ | ❌ |
-| 专注度分数 | ❌ | ✅ |
-| 频段功率 | ❌ | ✅ |
+| 专注度分数 | ✅ **已集成** | ✅ |
+| 频段功率 | ✅ **已集成** | ✅ |
 | 通道选择器 | ❌ | ✅ |
 | 录制 | ✅ | ✅ |
+
+**结论：** eeg_viewer 现在是功能最完整的 UI，包含 EEG/MIC/音频/阻抗/focus/录制。web_app 可作为独立轻量替代。
 
 ---
 
 ## 六、待做事项
 
-### 已规划但未实施
+### 已完成（本次会话）
 
-| 事项 | 说明 | 优先级 |
+| 事项 | 说明 | Commit |
 |------|------|--------|
-| 合并两套 UI | 把 focus score 接入 eeg_viewer，一个页面看全部功能 | 高 |
-| 后台 FocusService | 在 eeg_viewer 中加后台线程跑 pipeline | 高 |
-| viewer.js 加 focus panel | 前端显示专注度和频段功率 | 高 |
+| 合并两套 UI | focus score 已接入 eeg_viewer | 90d653e |
+| 后台 FocusService | `focus_service.py` 后台线程跑 pipeline | fa0c3e0 |
+| viewer.js 加 focus panel | 前端显示专注度和频段功率 | 4730891 |
+| main.py 集成 | WebSocket payload 包含 focus 数据 | 1ac46f7 |
 
 ### 未规划
 
@@ -267,6 +280,10 @@ python -m ear_eeg_sound_lab.src.web_app.server --port 8766
 ## 八、Git 提交历史（本次开发）
 
 ```
+90d653e Merge focus integration into master
+1ac46f7 feat(viewer): integrate FocusService into WebSocket payload
+4730891 feat(viewer): add focus panel to UI (HTML + JS + CSS)
+fa0c3e0 feat(viewer): add background focus computation service
 e0af6e7 feat(web_app): add recording service, recording API, and enhanced UI
 1a8187a docs: add M2 realtime runner implementation plan
 4844b9e feat(web_app): add realtime server with HTTP + WebSocket
@@ -295,7 +312,7 @@ b966657 feat(engine): add dataclass schemas for realtime pipeline
 
 ## 九、已知限制
 
-1. **两套 UI 独立运行** — eeg_viewer 有 MIC/音频/阻抗但无 focus；web_app 有 focus 但无 MIC/音频/阻抗
+1. **两套 UI 仍独立运行** — eeg_viewer 已集成 focus，功能最完整；web_app 是轻量替代，可考虑后续废弃或合并
 2. **算法效果未用真实 EEG 验证** — 测试用的是合成正弦波和随机数据
 3. **web_app 的 WebSocket 无鉴权** — 监听 localhost，暂无安全风险
 4. **preprocessing 每通道独立滤波** — 可优化为向量化
