@@ -1,0 +1,50 @@
+{
+  "session": {
+    "outputDir": "recordings",
+    "saveSidecarJson": true,
+    "timelineFileSuffix": ".events.json",
+    "summaryFileSuffix": ".summary.json"
+  },
+  "processing": {
+    "sampleRate": 250,
+    "channels": 16,
+    "windowSeconds": 2.0,
+    "updateSeconds": 0.5,
+    "unit": "counts",
+    "gain": 24.0,
+    "vref": 4.5
+  },
+  "state": {
+    "focusThreshold": 70,
+    "stableThreshold": 45,
+    "poorQualityThreshold": 0.4,
+    "affectEnabled": true,
+    "affectExperimental": true
+  },
+  "audioResponse": {
+    "preBaselineSeconds": 10.0,
+    "minSegmentSeconds": 20.0,
+    "postEvalSeconds": 10.0,
+    "minQuality": 0.6,
+    "focusGainThreshold": 5.0,
+    "relaxationGainThreshold": 5.0
+  },
+  "trigger": {
+    "enabled": true,
+    "hotkeys": {
+      "space": "manual_marker",
+      "1": "task_start",
+      "2": "task_end",
+      "3": "user_noted_focus",
+      "4": "user_noted_distraction"
+    }
+  },
+  "adaptive": {
+    "enabledByDefault": false,
+    "mode": "prompt",
+    "focusDropPoints": 10,
+    "focusDropDurationSeconds": 30,
+    "minSongTrialSeconds": 60,
+    "minQuality": 0.7
+  }
+}
