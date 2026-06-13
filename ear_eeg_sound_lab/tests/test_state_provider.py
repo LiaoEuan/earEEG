@@ -101,6 +101,36 @@ class TestDashboardStateProvider(unittest.TestCase):
         self.assertIn("timestamp", state)
         self.assertIsInstance(state["timestamp"], float)
 
+    def test_state_schema(self):
+        """验证 get_state() 返回的完整 schema 结构。"""
+        provider = DashboardStateProvider(channels=4, sample_rate=250.0)
+        output = _make_engine_output(n_channels=4)
+        provider.update(output)
+
+        state = provider.get_state()
+
+        self.assertEqual(set(state.keys()), {"timestamp", "device", "focus", "features", "eeg", "recording"})
+        self.assertEqual(
+            set(state["device"].keys()),
+            {"connected", "streamName", "sampleRate", "channels"},
+        )
+        self.assertEqual(
+            set(state["focus"].keys()),
+            {"score", "quality", "state", "reasons"},
+        )
+        self.assertEqual(
+            set(state["features"].keys()),
+            {"globalBandPowers", "thetaBetaRatio", "alphaBetaRatio", "artifactRatio"},
+        )
+        self.assertEqual(
+            set(state["features"]["globalBandPowers"].keys()),
+            {"delta", "theta", "alpha", "beta", "gamma"},
+        )
+        self.assertEqual(
+            set(state["eeg"].keys()),
+            {"channels", "sampleRate", "samples", "timestamps"},
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
