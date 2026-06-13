@@ -24,6 +24,7 @@ let micAudioContext = null;
 let micPlayTime = 0;
 const micMonitorLeadSeconds = 0.08;
 let electrodeSelection = Array.from({ length: CHANNELS }, () => true);
+let electrodeConfig = null; // loaded from JSON
 
 /* Display state (frontend only, not sent to backend) */
 const display = {
@@ -556,6 +557,24 @@ function setupToggles() {
   });
 }
 
+/* ===== Electrode config ===== */
+async function loadElectrodeConfig() {
+  try {
+    const resp = await fetch("/electrode_config.json");
+    if (!resp.ok) return;
+    electrodeConfig = await resp.json();
+    // Apply config to electrodeSelection
+    if (electrodeConfig.channels) {
+      for (let i = 0; i < Math.min(electrodeConfig.channels.length, CHANNELS); i++) {
+        electrodeSelection[i] = !!electrodeConfig.channels[i].enabled;
+      }
+    }
+    console.log("[electrode] loaded config:", electrodeConfig.name);
+  } catch (e) {
+    console.log("[electrode] no config file, using defaults");
+  }
+}
+
 /* ===== Electrode modal ===== */
 function setupElectrodeModal() {
   const modal = document.getElementById("electrodeModal");
@@ -570,7 +589,9 @@ function setupElectrodeModal() {
     cb.checked = electrodeSelection[i];
     const lbl = document.createElement("label");
     lbl.htmlFor = `elec_${i}`;
-    lbl.textContent = `CH${String(i + 1).padStart(2, "0")}`;
+    // Show channel name from config if available
+    const chName = electrodeConfig?.channels?.[i]?.name || `CH${String(i + 1).padStart(2, "0")}`;
+    lbl.textContent = chName;
     item.appendChild(cb);
     item.appendChild(lbl);
     grid.appendChild(item);
@@ -652,13 +673,14 @@ function setupEvents() {
 }
 
 /* ===== Init ===== */
-function init() {
+async function init() {
   setControls({ connected: false, acquiring: false });
   setMicMonitorStatus();
   renderImpedance({ running: false, results: [] });
   renderRecording({ running: false });
 
   setupToggles();
+  await loadElectrodeConfig();
   setupElectrodeModal();
   setupImpedanceModal();
   setupEvents();
