@@ -5,59 +5,77 @@
 <title>earEEG Realtime</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: -apple-system, system-ui, sans-serif; background: #1a1a2e; color: #eee; }
-.header { display: flex; justify-content: space-between; padding: 12px 20px; background: #16213e; }
-.status { display: flex; gap: 16px; align-items: center; }
-.badge { padding: 4px 10px; border-radius: 12px; font-size: 13px; }
+body { font-family: -apple-system, system-ui, sans-serif; background: #1a1a2e; color: #eee; font-size: 14px; }
+.header { display: flex; justify-content: space-between; padding: 10px 16px; background: #16213e; align-items: center; }
+.status { display: flex; gap: 12px; align-items: center; }
+.badge { padding: 3px 8px; border-radius: 10px; font-size: 12px; }
 .badge.ok { background: #0f3d0f; color: #4caf50; }
 .badge.err { background: #3d0f0f; color: #f44336; }
-.main { display: grid; grid-template-columns: 1fr 280px; gap: 16px; padding: 16px; height: calc(100vh - 56px); }
-.panel { background: #16213e; border-radius: 8px; padding: 16px; overflow: hidden; }
-.panel h3 { font-size: 14px; color: #aaa; margin-bottom: 12px; }
-canvas { width: 100%; background: #0a0a1a; border-radius: 4px; }
-.focus-score { font-size: 64px; font-weight: bold; text-align: center; }
-.focus-state { text-align: center; font-size: 18px; margin: 8px 0; }
-.reasons { font-size: 12px; color: #aaa; list-style: none; }
-.reasons li { margin: 4px 0; }
-.bars { display: flex; gap: 8px; align-items: flex-end; height: 120px; }
+.badge.rec { background: #3d0f0f; color: #f44336; animation: pulse 1s infinite; }
+@keyframes pulse { 50% { opacity: 0.5; } }
+.btn { padding: 5px 14px; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; }
+.btn-primary { background: #4caf50; color: white; }
+.btn-danger { background: #f44336; color: white; }
+.btn-sm { padding: 3px 8px; font-size: 11px; }
+.main { display: grid; grid-template-columns: 1fr 260px; gap: 12px; padding: 12px; height: calc(100vh - 50px); }
+.panel { background: #16213e; border-radius: 6px; padding: 12px; overflow: hidden; }
+.panel h3 { font-size: 12px; color: #888; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+canvas { width: 100%; background: #0a0a1a; border-radius: 4px; display: block; }
+.focus-score { font-size: 56px; font-weight: bold; text-align: center; line-height: 1; }
+.focus-state { text-align: center; font-size: 16px; margin: 6px 0; color: #aaa; }
+.reasons { font-size: 11px; color: #777; list-style: none; }
+.reasons li { margin: 2px 0; padding: 2px 6px; background: #1a1a2e; border-radius: 3px; display: inline-block; }
+.bars { display: flex; gap: 6px; align-items: flex-end; height: 100px; }
 .bar-col { flex: 1; display: flex; flex-direction: column; align-items: center; }
-.bar { width: 100%; background: #4caf50; border-radius: 2px 2px 0 0; transition: height 0.2s; min-height: 2px; }
-.bar-label { font-size: 11px; text-align: center; color: #aaa; margin-top: 4px; }
-.ratios { font-size: 13px; color: #aaa; margin-top: 12px; }
-.ratios div { margin: 4px 0; }
+.bar { width: 100%; border-radius: 2px 2px 0 0; transition: height 0.15s; min-height: 2px; }
+.bar-label { font-size: 10px; color: #666; margin-top: 3px; }
+.ratios { font-size: 12px; color: #888; margin-top: 8px; }
+.ratios div { margin: 3px 0; }
+.ratios span { color: #ccc; font-weight: 500; }
+.channels { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+.ch-toggle { padding: 2px 6px; border-radius: 3px; font-size: 10px; cursor: pointer; user-select: none; }
+.ch-toggle.on { background: #2d4a2d; color: #4caf50; }
+.ch-toggle.off { background: #1a1a2e; color: #555; }
+.recordings { max-height: 120px; overflow-y: auto; }
+.rec-item { padding: 4px 0; border-bottom: 1px solid #1a1a2e; font-size: 12px; color: #888; display: flex; justify-content: space-between; }
 </style>
 </head>
 <body>
 <div class="header">
   <div class="status">
-    <span>earEEG Realtime</span>
+    <strong>earEEG</strong>
     <span id="conn-badge" class="badge err">disconnected</span>
     <span id="device-badge" class="badge err">no device</span>
+    <span id="fps" style="color:#666;font-size:12px">0 fps</span>
   </div>
   <div class="status">
-    <span id="fps">0 fps</span>
+    <span id="rec-status"></span>
+    <button id="rec-btn" class="btn btn-primary" onclick="toggleRecording()">Start Recording</button>
   </div>
 </div>
 <div class="main">
-  <div class="panel">
-    <h3>EEG Waveform (16 channels)</h3>
-    <canvas id="eeg-canvas" height="400"></canvas>
+  <div style="display:flex;flex-direction:column;gap:12px;">
+    <div class="panel" style="flex:1">
+      <h3>EEG Waveform</h3>
+      <canvas id="eeg-canvas"></canvas>
+      <div id="ch-toggles" class="channels"></div>
+    </div>
   </div>
-  <div style="display:flex;flex-direction:column;gap:16px;">
+  <div style="display:flex;flex-direction:column;gap:12px;">
     <div class="panel">
       <h3>Focus</h3>
       <div id="focus-score" class="focus-score">--</div>
       <div id="focus-state" class="focus-state">unknown</div>
-      <ul id="focus-reasons" class="reasons"></ul>
+      <div id="focus-reasons" class="reasons"></div>
     </div>
     <div class="panel">
       <h3>Band Powers</h3>
       <div id="bars" class="bars">
-        <div class="bar-col"><div class="bar" id="bar-delta" style="height:2px"></div><div class="bar-label">delta</div></div>
-        <div class="bar-col"><div class="bar" id="bar-theta" style="height:2px"></div><div class="bar-label">theta</div></div>
-        <div class="bar-col"><div class="bar" id="bar-alpha" style="height:2px"></div><div class="bar-label">alpha</div></div>
-        <div class="bar-col"><div class="bar" id="bar-beta" style="height:2px"></div><div class="bar-label">beta</div></div>
-        <div class="bar-col"><div class="bar" id="bar-gamma" style="height:2px"></div><div class="bar-label">gamma</div></div>
+        <div class="bar-col"><div class="bar" id="bar-delta" style="height:2px;background:#4caf50"></div><div class="bar-label">delta</div></div>
+        <div class="bar-col"><div class="bar" id="bar-theta" style="height:2px;background:#8bc34a"></div><div class="bar-label">theta</div></div>
+        <div class="bar-col"><div class="bar" id="bar-alpha" style="height:2px;background:#2196f3"></div><div class="bar-label">alpha</div></div>
+        <div class="bar-col"><div class="bar" id="bar-beta" style="height:2px;background:#ff9800"></div><div class="bar-label">beta</div></div>
+        <div class="bar-col"><div class="bar" id="bar-gamma" style="height:2px;background:#9c27b0"></div><div class="bar-label">gamma</div></div>
       </div>
       <div class="ratios">
         <div>theta/beta: <span id="tbr">--</span></div>
@@ -65,12 +83,41 @@ canvas { width: 100%; background: #0a0a1a; border-radius: 4px; }
         <div>Quality: <span id="quality">--</span></div>
       </div>
     </div>
+    <div class="panel">
+      <h3>Recordings</h3>
+      <div id="recordings" class="recordings"><span style="color:#555">loading...</span></div>
+    </div>
   </div>
 </div>
 <script>
-const canvas = document.getElementById('eeg-canvas');
-const ctx = canvas.getContext('2d');
-let ws, msgCount = 0, lastFpsTime = Date.now();
+var canvas = document.getElementById('eeg-canvas');
+var ctx = canvas.getContext('2d');
+var ws, msgCount = 0, lastFpsTime = Date.now();
+var visibleChannels = {};
+var allChannels = 16;
+
+// Initialize channel toggles
+for (var i = 0; i < allChannels; i++) {
+  visibleChannels[i] = i < 8; // show first 8 by default
+}
+buildChannelToggles();
+
+function buildChannelToggles() {
+  var el = document.getElementById('ch-toggles');
+  el.innerHTML = '';
+  for (var i = 0; i < allChannels; i++) {
+    var span = document.createElement('span');
+    span.className = 'ch-toggle ' + (visibleChannels[i] ? 'on' : 'off');
+    span.textContent = 'Ch' + (i + 1);
+    span.setAttribute('data-ch', i);
+    span.onclick = function() {
+      var ch = parseInt(this.getAttribute('data-ch'));
+      visibleChannels[ch] = !visibleChannels[ch];
+      buildChannelToggles();
+    };
+    el.appendChild(span);
+  }
+}
 
 function connect() {
   ws = new WebSocket('ws://' + location.host + '/ws');
@@ -84,8 +131,7 @@ function connect() {
     setTimeout(connect, 2000);
   };
   ws.onmessage = function(e) {
-    var state = JSON.parse(e.data);
-    update(state);
+    update(JSON.parse(e.data));
   };
 }
 
@@ -98,23 +144,45 @@ function update(state) {
     lastFpsTime = now;
   }
 
+  // Device
   var dev = state.device;
-  var devBadge = document.getElementById('device-badge');
-  devBadge.className = dev.connected ? 'badge ok' : 'badge err';
-  devBadge.textContent = dev.connected ? dev.streamName : 'no device';
+  var db = document.getElementById('device-badge');
+  db.className = dev.connected ? 'badge ok' : 'badge err';
+  db.textContent = dev.connected ? dev.streamName : 'no device';
 
+  // Recording
+  var rec = state.recording || {};
+  var recBtn = document.getElementById('rec-btn');
+  var recStatus = document.getElementById('rec-status');
+  if (rec.running) {
+    recBtn.className = 'btn btn-danger';
+    recBtn.textContent = 'Stop Recording';
+    recStatus.className = 'badge rec';
+    recStatus.textContent = rec.sessionId + ' ' + rec.elapsedSeconds + 's';
+  } else {
+    recBtn.className = 'btn btn-primary';
+    recBtn.textContent = 'Start Recording';
+    recStatus.className = 'badge';
+    recStatus.textContent = rec.lastPath ? 'saved: ' + rec.lastPath.split(/[\\/]/).pop() : '';
+  }
+
+  // Focus
+  var focusColors = { focused: '#4caf50', stable: '#2196f3', relaxed: '#8bc34a', fatigued: '#ff9800', noisy: '#f44336' };
   document.getElementById('focus-score').textContent = state.focus.score;
+  document.getElementById('focus-score').style.color = focusColors[state.focus.state] || '#eee';
   document.getElementById('focus-state').textContent = state.focus.state;
-  var ul = document.getElementById('focus-reasons');
-  ul.innerHTML = '';
+  var reasonsEl = document.getElementById('focus-reasons');
+  reasonsEl.innerHTML = '';
   state.focus.reasons.forEach(function(r) {
-    var li = document.createElement('li');
-    li.textContent = r;
-    ul.appendChild(li);
+    var span = document.createElement('span');
+    span.textContent = r;
+    reasonsEl.appendChild(span);
+    reasonsEl.appendChild(document.createTextNode(' '));
   });
 
   document.getElementById('quality').textContent = (state.focus.quality * 100).toFixed(0) + '%';
 
+  // Band powers
   var bp = state.features.globalBandPowers;
   var maxBp = Math.max(bp.delta, bp.theta, bp.alpha, bp.beta, bp.gamma, 0.01);
   ['delta','theta','alpha','beta','gamma'].forEach(function(b) {
@@ -123,22 +191,62 @@ function update(state) {
   document.getElementById('tbr').textContent = state.features.thetaBetaRatio.toFixed(2);
   document.getElementById('abr').textContent = state.features.alphaBetaRatio.toFixed(2);
 
+  // Waveform
   drawWaveform(state.eeg);
 }
 
 function drawWaveform(eeg) {
   if (!eeg.samples || eeg.samples.length === 0) return;
   canvas.width = canvas.offsetWidth;
-  canvas.height = canvas.offsetHeight;
+  canvas.height = canvas.offsetHeight || 400;
   var w = canvas.width, h = canvas.height;
-  var ch = eeg.channels;
-  var rowH = h / ch;
+
+  // Count visible channels
+  var visCount = 0;
+  for (var c = 0; c < eeg.channels; c++) {
+    if (visibleChannels[c]) visCount++;
+  }
+  if (visCount === 0) return;
+  var rowH = h / visCount;
 
   ctx.clearRect(0, 0, w, h);
-  for (var c = 0; c < ch; c++) {
+
+  // Grid
+  ctx.strokeStyle = '#1a2a3a';
+  ctx.lineWidth = 0.5;
+  for (var c = 0; c < visCount; c++) {
+    ctx.beginPath();
+    ctx.moveTo(0, c * rowH);
+    ctx.lineTo(w, c * rowH);
+    ctx.stroke();
+  }
+
+  // Time axis
+  if (eeg.timestamps && eeg.timestamps.length > 1) {
+    var tStart = eeg.timestamps[0];
+    var tEnd = eeg.timestamps[eeg.timestamps.length - 1];
+    var duration = tEnd - tStart;
+    ctx.fillStyle = '#444';
+    ctx.font = '10px sans-serif';
+    for (var t = 0; t <= duration; t += 0.5) {
+      var x = (t / duration) * w;
+      ctx.fillText(t.toFixed(1) + 's', x + 2, h - 4);
+      ctx.strokeStyle = '#1a2a3a';
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, h);
+      ctx.stroke();
+    }
+  }
+
+  // Waveforms
+  var visIdx = 0;
+  var colors = ['#4caf50','#8bc34a','#cddc39','#ffeb3b','#ffc107','#ff9800','#ff5722','#f44336','#e91e63','#9c27b0','#673ab7','#3f51b5','#2196f3','#00bcd4','#009688','#795548'];
+  for (var c = 0; c < eeg.channels; c++) {
+    if (!visibleChannels[c]) continue;
     var data = eeg.samples[c];
-    if (!data || data.length === 0) continue;
-    var y0 = c * rowH + rowH / 2;
+    if (!data || data.length === 0) { visIdx++; continue; }
+    var y0 = visIdx * rowH + rowH / 2;
 
     var min = Infinity, max = -Infinity;
     for (var i = 0; i < data.length; i++) {
@@ -147,7 +255,7 @@ function drawWaveform(eeg) {
     }
     var range = max - min || 1;
 
-    ctx.strokeStyle = 'hsl(' + ((c * 360 / ch) % 360) + ', 70%, 60%)';
+    ctx.strokeStyle = colors[c % colors.length];
     ctx.lineWidth = 1;
     ctx.beginPath();
     for (var i = 0; i < data.length; i++) {
@@ -157,13 +265,50 @@ function drawWaveform(eeg) {
     }
     ctx.stroke();
 
-    ctx.fillStyle = '#666';
+    // Label
+    ctx.fillStyle = colors[c % colors.length];
     ctx.font = '10px sans-serif';
-    ctx.fillText('Ch' + (c + 1), 4, c * rowH + 12);
+    ctx.fillText('Ch' + (c + 1), 4, visIdx * rowH + 12);
+
+    // Scale
+    ctx.fillStyle = '#444';
+    ctx.font = '9px sans-serif';
+    var uvRange = (max - min);
+    ctx.fillText(uvRange.toFixed(0) + ' uV', w - 50, visIdx * rowH + 12);
+
+    visIdx++;
   }
 }
 
+function toggleRecording() {
+  var rec = document.getElementById('rec-btn');
+  var isRecording = rec.textContent === 'Stop Recording';
+  var url = isRecording ? '/api/recording/stop' : '/api/recording/start';
+  fetch(url, { method: 'POST' }).then(function(r) { return r.json(); }).then(function(data) {
+    if (!data.ok) alert(data.error);
+    loadRecordings();
+  });
+}
+
+function loadRecordings() {
+  fetch('/api/recordings').then(function(r) { return r.json(); }).then(function(data) {
+    var el = document.getElementById('recordings');
+    if (!data.recordings || data.recordings.length === 0) {
+      el.innerHTML = '<span style="color:#555">no recordings</span>';
+      return;
+    }
+    el.innerHTML = '';
+    data.recordings.forEach(function(rec) {
+      var div = document.createElement('div');
+      div.className = 'rec-item';
+      div.innerHTML = '<span>' + rec.name + '</span><span>' + (rec.sizeBytes / 1024).toFixed(0) + ' KB</span>';
+      el.appendChild(div);
+    });
+  });
+}
+
 connect();
+loadRecordings();
 </script>
 </body>
 </html>

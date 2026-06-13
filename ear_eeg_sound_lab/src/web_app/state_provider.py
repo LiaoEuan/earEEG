@@ -126,4 +126,10 @@ class DashboardStateProvider:
                     "samples": self._waveform.tolist(),
                     "timestamps": self._waveform_timestamps.tolist(),
                 },
+                "recording": {
+                    "running": False,
+                    "sessionId": "",
+                    "elapsedSeconds": 0,
+                    "lastPath": "",
+                },
             }

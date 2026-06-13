@@ -24,6 +24,7 @@ from typing import Any
 from ear_eeg_sound_lab.src.integrations.lsl_buffer import EEGRollingBuffer
 from ear_eeg_sound_lab.src.integrations.lsl_reader import LSLStreamReader
 from ear_eeg_sound_lab.src.realtime_engine.pipeline import process_window
+from ear_eeg_sound_lab.src.web_app.recording_service import RecordingService
 from ear_eeg_sound_lab.src.web_app.state_provider import DashboardStateProvider
 
 STATIC_DIR = Path(__file__).with_name("static").resolve()
@@ -42,6 +43,7 @@ class RealtimeHandler(BaseHTTPRequestHandler):
     """HTTP request handler with WebSocket upgrade support."""
 
     state_provider: DashboardStateProvider
+    recorder: RecordingService
 
     def log_message(self, fmt: str, *args) -> None:
         if args and str(args[1]) == "101":
@@ -56,10 +58,29 @@ class RealtimeHandler(BaseHTTPRequestHandler):
             self._send_json(self.state_provider.get_state())
             return
 
+        if self.path == "/api/recording/status":
+            self._send_json(self.recorder.status())
+            return
+
+        if self.path == "/api/recordings":
+            self._send_json({"recordings": self.recorder.list_recordings()})
+            return
+
         if self.path == "/" or self.path == "/index.html":
             self._serve_file(STATIC_DIR / "index.html", "text/html")
             return
 
+        self.send_error(404)
+
+    def do_POST(self) -> None:
+        if self.path == "/api/recording/start":
+            result = self.recorder.start(sample_rate=self.state_provider._sample_rate)
+            self._send_json(result)
+            return
+        if self.path == "/api/recording/stop":
+            result = self.recorder.stop()
+            self._send_json(result)
+            return
         self.send_error(404)
 
     def _serve_file(self, path: Path, content_type: str) -> None:
@@ -98,6 +119,7 @@ class RealtimeHandler(BaseHTTPRequestHandler):
         try:
             while True:
                 state = self.state_provider.get_state()
+                state["recording"] = self.recorder.status()
                 payload = json.dumps(state, separators=(",", ":")).encode("utf-8")
                 self.wfile.write(_websocket_frame(payload))
                 self.wfile.flush()
@@ -145,11 +167,13 @@ class RealtimeServer:
             channels=channels,
             sample_rate=sample_rate,
         )
+        self.recorder = RecordingService(output_dir="recordings")
         self._stop_event = threading.Event()
 
     def run(self) -> None:
         """Start the server: LSL connection + HTTP/WS service + processing loop."""
         RealtimeHandler.state_provider = self.state_provider
+        RealtimeHandler.recorder = self.recorder
 
         httpd = ThreadingHTTPServer((self.host, self.port), RealtimeHandler)
         http_thread = threading.Thread(target=httpd.serve_forever, daemon=True)
@@ -208,6 +232,7 @@ class RealtimeServer:
                 try:
                     output = process_window(window)
                     self.state_provider.update(output)
+                    self.recorder.append_eeg(output.window.data)
                 except Exception as e:
                     print(f"[server] Pipeline error: {e}")
 
