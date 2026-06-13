@@ -21,7 +21,7 @@ STIMULI_CHANNELS = 2
 
 
 class RecordingService:
-    def __init__(self, output_dir: str | Path = "recordings"):
+    def __init__(self, output_dir: str | Path = "recordings", timeline=None):
         self._output_dir = Path(output_dir)
         self._lock = threading.RLock()
         self._running = False
@@ -33,6 +33,7 @@ class RecordingService:
         self._stimuli = _StimulusTimeline()
         self._last_path = ""
         self._last_error = ""
+        self._timeline = timeline
 
     def start(self, tag: str = "") -> dict:
         with self._lock:
@@ -50,6 +51,9 @@ class RecordingService:
             self._stimuli = _StimulusTimeline()
             self._last_path = ""
             self._last_error = ""
+            if self._timeline:
+                self._timeline.start_session(self._session_id, self._start_monotonic)
+                self._timeline.add_event("recording_start", source="viewer", payload={"sessionId": self._session_id})
             self._running = True
             return {"ok": True, "status": self.status()}
 
@@ -66,8 +70,17 @@ class RecordingService:
                 self._last_error = str(exc)
                 self._running = False
                 return {"ok": False, "error": str(exc), "status": self.status()}
+            events_path = None
+            if self._timeline:
+                self._timeline.add_event("recording_stop", source="viewer", payload={"sessionId": self._session_id})
+                self._timeline.stop_session()
+                events_path = str(self._output_dir / f"{self._session_id}.events.json")
+                self._timeline.export_json(Path(events_path))
             self._running = False
-            return {"ok": True, "path": self._last_path, "status": self.status()}
+            result: dict = {"ok": True, "path": self._last_path, "status": self.status()}
+            if events_path:
+                result["eventsPath"] = events_path
+            return result
 
     def status(self) -> dict:
         with self._lock:
@@ -98,6 +111,8 @@ class RecordingService:
             try:
                 self._stimuli.play(wav_path, time.monotonic())
                 self._last_error = ""
+                if self._timeline:
+                    self._timeline.add_event("audio_play", payload={"path": wav_path, "fileName": Path(wav_path).name})
             except Exception as exc:
                 self._last_error = str(exc)
 
@@ -105,16 +120,22 @@ class RecordingService:
         with self._lock:
             if self._running:
                 self._stimuli.pause(time.monotonic())
+                if self._timeline:
+                    self._timeline.add_event("audio_pause")
 
     def stimulus_resume(self) -> None:
         with self._lock:
             if self._running:
                 self._stimuli.resume(time.monotonic())
+                if self._timeline:
+                    self._timeline.add_event("audio_resume")
 
     def stimulus_stop(self) -> None:
         with self._lock:
             if self._running:
                 self._stimuli.stop(time.monotonic())
+                if self._timeline:
+                    self._timeline.add_event("audio_stop")
 
     def _append(self, samples: np.ndarray, chunks: list[np.ndarray],
                 expected_channels: int) -> None:
